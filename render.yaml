@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: domovod
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: reflex run --env prod --single-port --frontend-port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        value: sqlite:///domovod.db
+      - key: YOOKASSA_SHOP_ID
+        value: "54401"
+      - key: YOOKASSA_SECRET_KEY
+        value: test_Fh8hUAVVBGUGbjmlzba6TB0iyUbos_lueTHE-axOwM0
+    healthCheckPath: /ping
