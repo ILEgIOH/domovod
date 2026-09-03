@@ -10,6 +10,7 @@ from sqlmodel import select
 
 from .db import get_session
 from .models import Building, Entrance, Resident
+from .qr import build_join_url, qr_data_uri
 from .setters import make_setter
 from .state import AuthState
 from .state_finance import FinanceState
@@ -27,6 +28,8 @@ class EntranceItem(BaseModel):
     number: int
     invite_code: str
     residents_count: int
+    join_url: str
+    qr_data_uri: str
 
 
 class ResidentItem(BaseModel):
@@ -47,6 +50,7 @@ class UKAdminState(AuthState):
     new_entrance_building_id: str = ""
     new_entrance_number: str = ""
     admin_error: str = ""
+    copied_entrance_id: int = 0
 
     set_new_building_address = make_setter("new_building_address")
     set_new_entrance_building_id = make_setter("new_entrance_building_id")
@@ -67,6 +71,7 @@ class UKAdminState(AuthState):
                 select(Entrance).where(Entrance.tenant_id == self.tenant_id)
             ).all()
             building_map = {b.id: b.address for b in building_rows}
+            origin = self.router.url.origin
             entrance_items = []
             resident_items = []
             for e in entrance_rows:
@@ -75,6 +80,7 @@ class UKAdminState(AuthState):
                         select(Resident).where(Resident.entrance_id == e.id)
                     ).all()
                 )
+                join_url = build_join_url(origin, e.invite_code)
                 entrance_items.append(
                     EntranceItem(
                         id=e.id,
@@ -83,6 +89,8 @@ class UKAdminState(AuthState):
                         number=e.number,
                         invite_code=e.invite_code,
                         residents_count=count,
+                        join_url=join_url,
+                        qr_data_uri=qr_data_uri(join_url),
                     )
                 )
             self.entrances = entrance_items
@@ -148,3 +156,7 @@ class UKAdminState(AuthState):
         # Keep FinanceState.entrance_options (used by the "new collection"
         # form) in sync — it's loaded independently of UKAdminState.
         return [UKAdminState.load_admin_data, FinanceState.load_uk_finance]
+
+    @rx.event
+    def mark_copied(self, entrance_id: int):
+        self.copied_entrance_id = entrance_id
