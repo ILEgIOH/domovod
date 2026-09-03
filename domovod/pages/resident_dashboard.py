@@ -9,7 +9,17 @@ from ..state_chat import ChatState
 from ..state_finance import FinanceState
 from ..state_news import NewsState
 from ..tab_state import TabState
-from ..ui import bottom_tabs, empty_state, error_text, phone_shell, progress_bar, section_card, top_bar
+from ..ui import (
+    CARD_BG,
+    MAX_WIDTH,
+    bottom_tabs,
+    empty_state,
+    error_text,
+    phone_shell,
+    progress_bar,
+    section_card,
+    top_bar,
+)
 
 RESIDENT_TABS = [
     ("news", "Новости", "newspaper"),
@@ -34,7 +44,7 @@ def _news_tab() -> rx.Component:
 
 
 def _chat_view() -> rx.Component:
-    return rx.vstack(
+    return rx.fragment(
         rx.box(
             rx.cond(
                 ChatState.messages.length() == 0,
@@ -66,23 +76,31 @@ def _chat_view() -> rx.Component:
             ),
             width="100%",
             min_height="200px",
+            padding_bottom="4rem",
         ),
-        rx.hstack(
-            rx.input(
-                placeholder="Сообщение соседям по подъезду...",
-                value=ChatState.new_message,
-                on_change=ChatState.set_new_message,
-                on_key_down=ChatState.handle_key,
+        rx.box(
+            rx.hstack(
+                rx.input(
+                    placeholder="Сообщение соседям по подъезду...",
+                    value=ChatState.new_message,
+                    on_change=ChatState.set_new_message,
+                    on_key_down=ChatState.handle_key,
+                    width="100%",
+                ),
+                rx.icon_button(rx.icon("send", size=16), on_click=ChatState.send_message),
                 width="100%",
             ),
-            rx.icon_button(rx.icon("send", size=16), on_click=ChatState.send_message),
             width="100%",
-            position="sticky",
-            bottom="4.5rem",
-            background="var(--gray-2)",
-            padding_top="0.5rem",
+            max_width=MAX_WIDTH,
+            position="fixed",
+            bottom="4.4rem",
+            left="50%",
+            transform="translateX(-50%)",
+            background=CARD_BG,
+            border_top="1px solid var(--gray-4)",
+            padding="0.6rem 1rem",
+            z_index="15",
         ),
-        width="100%",
     )
 
 

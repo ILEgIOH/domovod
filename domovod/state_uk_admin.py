@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import List
 
 import reflex as rx
@@ -51,6 +52,7 @@ class UKAdminState(AuthState):
     new_entrance_number: str = ""
     admin_error: str = ""
     copied_entrance_id: int = 0
+    is_live: bool = False
 
     set_new_building_address = make_setter("new_building_address")
     set_new_entrance_building_id = make_setter("new_entrance_building_id")
@@ -160,3 +162,26 @@ class UKAdminState(AuthState):
     @rx.event
     def mark_copied(self, entrance_id: int):
         self.copied_entrance_id = entrance_id
+
+    @rx.event
+    def stop_live(self):
+        self.is_live = False
+
+    @rx.event(background=True)
+    async def start_live(self):
+        """Периодически обновляет список жителей/подъездов, чтобы новые
+        регистрации по QR/ссылке были видны УК без обновления страницы."""
+        async with self:
+            if self.is_live or not self.tenant_id:
+                return
+            self.is_live = True
+        try:
+            while True:
+                await asyncio.sleep(5)
+                async with self:
+                    if not self.is_live:
+                        return
+                    yield UKAdminState.load_admin_data
+        finally:
+            async with self:
+                self.is_live = False

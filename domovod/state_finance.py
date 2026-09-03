@@ -92,6 +92,7 @@ class FinanceState(AuthState):
 
     pay_error: str = ""
     paying_collection_id: int = 0
+    is_live: bool = False
 
     set_new_debt_resident_id = make_setter("new_debt_resident_id")
     set_new_debt_period = make_setter("new_debt_period")
@@ -404,6 +405,32 @@ class FinanceState(AuthState):
             # because it fires after a server round-trip, not synchronously
             # inside the click handler.
             yield rx.redirect(confirmation_url)
+
+    @rx.event
+    def stop_live(self):
+        self.is_live = False
+
+    @rx.event(background=True)
+    async def start_live(self):
+        """Периодически подтягивает долги/сборы, чтобы платежи жителей и
+        начисления УК были видны другой стороне без обновления страницы."""
+        async with self:
+            if self.is_live:
+                return
+            self.is_live = True
+        try:
+            while True:
+                await asyncio.sleep(POLL_INTERVAL)
+                async with self:
+                    if not self.is_live:
+                        return
+                    if self.is_uk:
+                        yield FinanceState.load_uk_finance
+                    elif self.is_resident:
+                        yield FinanceState.load_resident_finance
+        finally:
+            async with self:
+                self.is_live = False
 
     @rx.event(background=True)
     async def poll_payment(self, payment_row_id: int):
