@@ -71,6 +71,35 @@ def _choose_view() -> rx.Component:
                 width="100%",
             ),
         ),
+        rx.vstack(
+            rx.text(
+                "Проверить без ввода данных",
+                size="1",
+                color="var(--gray-9)",
+            ),
+            rx.hstack(
+                rx.button(
+                    "Демо: житель",
+                    variant="outline",
+                    size="2",
+                    flex="1",
+                    on_click=AuthState.demo_login_resident,
+                ),
+                rx.button(
+                    "Демо: УК",
+                    variant="outline",
+                    size="2",
+                    flex="1",
+                    on_click=AuthState.demo_login_uk,
+                ),
+                width="100%",
+                spacing="2",
+            ),
+            spacing="2",
+            align="center",
+            width="100%",
+            padding_top="0.5rem",
+        ),
         width="100%",
         spacing="3",
     )
