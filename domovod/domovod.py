@@ -33,8 +33,11 @@ app.add_page(
     on_load=[
         AuthState.require_uk,
         NewsState.load_news,
+        NewsState.start_live,
         UKAdminState.load_admin_data,
+        UKAdminState.start_live,
         FinanceState.load_uk_finance,
+        FinanceState.start_live,
     ],
 )
 
@@ -45,8 +48,10 @@ app.add_page(
     on_load=[
         AuthState.require_resident,
         NewsState.load_news,
+        NewsState.start_live,
         ChatState.load_chat,
         ChatState.start_live,
         FinanceState.load_resident_finance,
+        FinanceState.start_live,
     ],
 )

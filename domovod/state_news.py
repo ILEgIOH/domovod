@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import List
 
 import reflex as rx
@@ -12,6 +13,8 @@ from .db import get_session
 from .models import News
 from .setters import make_setter
 from .state import AuthState
+
+POLL_INTERVAL = 4
 
 
 class NewsItem(BaseModel):
@@ -28,22 +31,21 @@ class NewsState(AuthState):
     new_title: str = ""
     new_body: str = ""
     news_error: str = ""
+    is_live: bool = False
 
     set_new_title = make_setter("new_title")
     set_new_body = make_setter("new_body")
 
-    @rx.event
-    def load_news(self):
+    def _query_news(self) -> List[NewsItem]:
         if not self.tenant_id:
-            self.news_items = []
-            return
+            return []
         with get_session() as session:
             rows = session.exec(
                 select(News)
                 .where(News.tenant_id == self.tenant_id)
                 .order_by(News.created_at.desc())
             ).all()
-        self.news_items = [
+        return [
             NewsItem(
                 id=r.id,
                 title=r.title,
@@ -53,6 +55,10 @@ class NewsState(AuthState):
             )
             for r in rows
         ]
+
+    @rx.event
+    def load_news(self):
+        self.news_items = self._query_news()
 
     @rx.event
     def create_news(self):
@@ -81,3 +87,27 @@ class NewsState(AuthState):
                 session.delete(item)
                 session.commit()
         return NewsState.load_news
+
+    @rx.event
+    def stop_live(self):
+        self.is_live = False
+
+    @rx.event(background=True)
+    async def start_live(self):
+        """Периодически подтягивает новости, чтобы изменения от УК были
+        видны жителю без обновления страницы (и наоборот, у другой УК —
+        не пересекаются, т.к. фильтр по tenant_id)."""
+        async with self:
+            if self.is_live or not self.tenant_id:
+                return
+            self.is_live = True
+        try:
+            while True:
+                await asyncio.sleep(POLL_INTERVAL)
+                async with self:
+                    if not self.is_live:
+                        return
+                    self.news_items = self._query_news()
+        finally:
+            async with self:
+                self.is_live = False
