@@ -104,12 +104,12 @@ def _chat_view() -> rx.Component:
     )
 
 
-def _debts_view() -> rx.Component:
+def _my_debt_list(items, empty_text: str) -> rx.Component:
     return rx.cond(
-        FinanceState.my_debts.length() == 0,
-        empty_state("Задолженностей нет", "receipt"),
+        items.length() == 0,
+        empty_state(empty_text, "receipt"),
         rx.foreach(
-            FinanceState.my_debts,
+            items,
             lambda d: section_card(
                 rx.hstack(
                     rx.vstack(
@@ -132,6 +132,28 @@ def _debts_view() -> rx.Component:
                 ),
             ),
         ),
+    )
+
+
+def _debts_view() -> rx.Component:
+    return rx.tabs.root(
+        rx.tabs.list(
+            rx.tabs.trigger("Активные", value="active"),
+            rx.tabs.trigger("История", value="history"),
+            width="100%",
+        ),
+        rx.tabs.content(
+            _my_debt_list(FinanceState.active_my_debts, "Задолженностей нет"),
+            value="active",
+            padding_top="0.6rem",
+        ),
+        rx.tabs.content(
+            _my_debt_list(FinanceState.paid_my_debts, "Оплаченных начислений пока нет"),
+            value="history",
+            padding_top="0.6rem",
+        ),
+        default_value="active",
+        width="100%",
     )
 
 

@@ -131,52 +131,74 @@ def _debts_section() -> rx.Component:
                 width="100%",
             )
         ),
-        rx.cond(
-            FinanceState.debts.length() == 0,
-            empty_state("Задолженностей пока нет", "receipt"),
-            rx.foreach(
-                FinanceState.debts,
-                lambda d: section_card(
-                    rx.hstack(
-                        rx.vstack(
-                            rx.text(
-                                f"{d.resident_name} · кв. {d.apartment}",
-                                weight="bold",
-                                size="2",
-                            ),
-                            rx.text(
-                                f"{d.category} · {d.period}",
-                                size="1",
-                                color="var(--gray-9)",
-                            ),
-                            align="start",
-                            spacing="0",
+        rx.tabs.root(
+            rx.tabs.list(
+                rx.tabs.trigger("Активные", value="active"),
+                rx.tabs.trigger("История", value="history"),
+                width="100%",
+            ),
+            rx.tabs.content(
+                _debt_list(FinanceState.active_debts, "Задолженностей пока нет"),
+                value="active",
+                padding_top="0.6rem",
+            ),
+            rx.tabs.content(
+                _debt_list(FinanceState.paid_debts, "Оплаченных начислений пока нет"),
+                value="history",
+                padding_top="0.6rem",
+            ),
+            default_value="active",
+            width="100%",
+        ),
+        width="100%",
+    )
+
+
+def _debt_list(items, empty_text: str) -> rx.Component:
+    return rx.cond(
+        items.length() == 0,
+        empty_state(empty_text, "receipt"),
+        rx.foreach(
+            items,
+            lambda d: section_card(
+                rx.hstack(
+                    rx.vstack(
+                        rx.text(
+                            f"{d.resident_name} · кв. {d.apartment}",
+                            weight="bold",
+                            size="2",
                         ),
-                        rx.spacer(),
-                        rx.vstack(
-                            rx.text(d.amount_fmt, weight="bold"),
-                            rx.badge(
-                                rx.cond(d.is_paid, "Оплачено", "Долг"),
-                                color_scheme=rx.cond(d.is_paid, "green", "red"),
-                            ),
-                            align="end",
-                            spacing="1",
+                        rx.text(
+                            f"{d.category} · {d.period}",
+                            size="1",
+                            color="var(--gray-9)",
                         ),
-                        width="100%",
                         align="start",
+                        spacing="0",
                     ),
-                    rx.button(
-                        rx.cond(d.is_paid, "Отметить как долг", "Отметить оплаченным"),
-                        size="1",
-                        variant="soft",
-                        width="100%",
-                        margin_top="0.5rem",
-                        on_click=FinanceState.toggle_debt_paid(d.id),
+                    rx.spacer(),
+                    rx.vstack(
+                        rx.text(d.amount_fmt, weight="bold"),
+                        rx.badge(
+                            rx.cond(d.is_paid, "Оплачено", "Долг"),
+                            color_scheme=rx.cond(d.is_paid, "green", "red"),
+                        ),
+                        align="end",
+                        spacing="1",
                     ),
+                    width="100%",
+                    align="start",
+                ),
+                rx.button(
+                    rx.cond(d.is_paid, "Отметить как долг", "Отметить оплаченным"),
+                    size="1",
+                    variant="soft",
+                    width="100%",
+                    margin_top="0.5rem",
+                    on_click=FinanceState.toggle_debt_paid(d.id),
                 ),
             ),
         ),
-        width="100%",
     )
 
 
@@ -380,22 +402,33 @@ def _profile_tab() -> rx.Component:
             ),
         ),
         rx.cond(
+            UKAdminState.buildings.length() > 1,
+            section_card(
+                field_label("Дом"),
+                rx.select.root(
+                    rx.select.trigger(width="100%"),
+                    rx.select.content(
+                        rx.foreach(
+                            UKAdminState.buildings,
+                            lambda b: rx.select.item(b.address, value=b.id.to_string()),
+                        )
+                    ),
+                    value=UKAdminState.selected_building_id,
+                    on_change=UKAdminState.set_selected_building_id,
+                    width="100%",
+                ),
+            ),
+        ),
+        rx.cond(
             UKAdminState.entrances.length() == 0,
             empty_state("Добавьте дом и подъезд, чтобы получить код приглашения для жителей", "building-2"),
             rx.vstack(
                 rx.heading("Подъезды и коды приглашения", size="3", margin_bottom="0.2rem"),
                 rx.foreach(
-                    UKAdminState.entrances,
+                    UKAdminState.visible_entrances,
                     lambda e: section_card(
                         rx.text(f"{e.building_address} · подъезд {e.number}", weight="bold", size="2"),
-                        rx.hstack(
-                            rx.code(e.invite_code, size="4"),
-                            rx.spacer(),
-                            rx.badge(f"{e.residents_count} жит."),
-                            width="100%",
-                            align="center",
-                            margin_top="0.35rem",
-                        ),
+                        rx.code(e.invite_code, size="4", margin_top="0.35rem"),
                         rx.text(
                             e.join_url,
                             size="1",

@@ -34,17 +34,35 @@ def phone_shell(*children, header: rx.Component | None = None) -> rx.Component:
     )
 
 
+def brand_icon(size: int = 18, padding: str = "0.45rem") -> rx.Component:
+    """Логотип — белый дом на зелёном круге. Пока просто ведёт на главную;
+    в будущем здесь будет переход в Telegram-бота для вызова служб дома."""
+    return rx.link(
+        rx.box(
+            rx.icon("house", size=size, color="white"),
+            background="var(--accent-9)",
+            padding=padding,
+            border_radius="999px",
+            display="flex",
+            align_items="center",
+            justify_content="center",
+            line_height="0",
+        ),
+        href="/",
+    )
+
+
 def top_bar(title: str, subtitle: str = "", right: rx.Component | None = None) -> rx.Component:
     return rx.box(
         rx.hstack(
-            rx.vstack(
-                rx.heading(title, size="5", weight="bold"),
+            rx.hstack(
+                brand_icon(),
                 rx.cond(
                     subtitle != "",
                     rx.text(subtitle, size="2", color="var(--gray-10)"),
                 ),
-                spacing="0",
-                align="start",
+                spacing="2",
+                align="center",
             ),
             rx.spacer(),
             right or rx.fragment(),

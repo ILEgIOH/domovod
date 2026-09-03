@@ -69,8 +69,15 @@ class AuthState(rx.State):
     # --- вход по ссылке/QR-коду (/join?code=...) ---
     join_error: str = ""
     join_entrance_label: str = ""
+    join_entrance_id: int = 0
+    res_household_size: str = ""
+    # Квартира уже занята другим жителем — сколько там живёт человек
+    # определяет только тот, кто зарегистрировал её первым.
+    join_apartment_taken: bool = False
+    join_apartment_household: int = 0
 
     set_auth_view = make_setter("auth_view")
+    set_res_household_size = make_setter("res_household_size")
     set_login_email = make_setter("login_email")
     set_login_password = make_setter("login_password")
     set_reg_company_name = make_setter("reg_company_name")
@@ -315,10 +322,38 @@ class AuthState(rx.State):
 
             building = session.get(Building, entrance.building_id)
             label = f"{building.address if building else '?'} · подъезд {entrance.number}"
+            entrance_id = entrance.id
         self.res_invite_code = code
         self.res_apartment = ""
+        self.res_household_size = ""
         self.res_error = ""
         self.join_entrance_label = label
+        self.join_entrance_id = entrance_id
+        self.join_apartment_taken = False
+        self.join_apartment_household = 0
+
+    @rx.event
+    def check_join_apartment(self):
+        """Смотрит, не зарегистрирована ли уже эта квартира в подъезде —
+        если да, число жильцов подставляется существующее и не редактируется."""
+        apt = self.res_apartment.strip()
+        if not apt or not self.join_entrance_id:
+            self.join_apartment_taken = False
+            self.join_apartment_household = 0
+            return
+        with get_session() as session:
+            existing = session.exec(
+                select(Resident).where(
+                    Resident.entrance_id == self.join_entrance_id,
+                    Resident.apartment == apt,
+                )
+            ).first()
+        if existing:
+            self.join_apartment_taken = True
+            self.join_apartment_household = existing.household_size
+        else:
+            self.join_apartment_taken = False
+            self.join_apartment_household = 0
 
     @rx.event
     def join_confirm(self):
@@ -340,11 +375,29 @@ class AuthState(rx.State):
             if not entrance:
                 self.join_error = "Код приглашения недействителен. Уточните ссылку в управляющей компании."
                 return
+
+            # Квартиру мог уже зарегистрировать другой член семьи по этому
+            # же коду — тогда число жильцов берём у него, а не у нового.
+            existing_in_apartment = session.exec(
+                select(Resident).where(
+                    Resident.entrance_id == entrance.id,
+                    Resident.apartment == apt,
+                )
+            ).first()
+            if existing_in_apartment:
+                household = existing_in_apartment.household_size
+            else:
+                try:
+                    household = max(int(self.res_household_size or 0), 0)
+                except ValueError:
+                    household = 0
+
             resident = Resident(
                 tenant_id=entrance.tenant_id,
                 entrance_id=entrance.id,
                 full_name=STUB_DISPLAY_NAME,
                 apartment=apt,
+                household_size=household,
                 max_user_id=self.max_device_id,
             )
             session.add(resident)
