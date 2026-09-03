@@ -80,18 +80,6 @@ class News(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now_utc)
 
 
-class ChatMessage(SQLModel, table=True):
-    """Сообщение в чате жильцов одного подъезда."""
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    entrance_id: int = Field(index=True)
-    tenant_id: int = Field(index=True)
-    sender_id: int
-    sender_name: str
-    text: str
-    created_at: datetime = Field(default_factory=now_utc)
-
-
 class Debt(SQLModel, table=True):
     """Задолженность жителя по конкретному периоду/статье начислений."""
 

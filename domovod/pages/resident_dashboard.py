@@ -1,29 +1,18 @@
-"""Кабинет жителя: новости, чат/долги/сборы, профиль."""
+"""Кабинет жителя: новости, долги/сборы, профиль."""
 
 from __future__ import annotations
 
 import reflex as rx
 
 from ..state import AuthState
-from ..state_chat import ChatState
 from ..state_finance import FinanceState
 from ..state_news import NewsState
 from ..tab_state import TabState
-from ..ui import (
-    CARD_BG,
-    MAX_WIDTH,
-    bottom_tabs,
-    empty_state,
-    error_text,
-    phone_shell,
-    progress_bar,
-    section_card,
-    top_bar,
-)
+from ..ui import bottom_tabs, empty_state, error_text, phone_shell, progress_bar, section_card, top_bar
 
 RESIDENT_TABS = [
     ("news", "Новости", "newspaper"),
-    ("hub", "Дом", "message-circle"),
+    ("finance", "Долги и сборы", "wallet"),
     ("profile", "Профиль", "user"),
 ]
 
@@ -39,67 +28,6 @@ def _news_tab() -> rx.Component:
                 rx.text(n.created_at, size="1", color="var(--gray-9)", margin_bottom="0.35rem"),
                 rx.text(n.body, size="2", color="var(--gray-11)"),
             ),
-        ),
-    )
-
-
-def _chat_view() -> rx.Component:
-    return rx.fragment(
-        rx.box(
-            rx.cond(
-                ChatState.messages.length() == 0,
-                empty_state("Сообщений пока нет. Напишите первым!", "message-circle"),
-                rx.vstack(
-                    rx.foreach(
-                        ChatState.messages,
-                        lambda m: rx.box(
-                            rx.box(
-                                rx.cond(
-                                    ~m.is_mine,
-                                    rx.text(m.sender_name, size="1", weight="bold", color="var(--accent-9)"),
-                                ),
-                                rx.text(m.text, size="2"),
-                                rx.text(m.created_at, size="1", color="var(--gray-9)", text_align="right"),
-                                background=rx.cond(m.is_mine, "var(--accent-4)", "var(--gray-3)"),
-                                padding="0.5rem 0.7rem",
-                                border_radius="12px",
-                                max_width="80%",
-                            ),
-                            width="100%",
-                            display="flex",
-                            justify_content=rx.cond(m.is_mine, "flex-end", "flex-start"),
-                            margin_bottom="0.4rem",
-                        ),
-                    ),
-                    width="100%",
-                ),
-            ),
-            width="100%",
-            min_height="200px",
-            padding_bottom="4rem",
-        ),
-        rx.box(
-            rx.hstack(
-                rx.input(
-                    placeholder="Сообщение соседям по подъезду...",
-                    value=ChatState.new_message,
-                    on_change=ChatState.set_new_message,
-                    on_key_down=ChatState.handle_key,
-                    width="100%",
-                ),
-                rx.icon_button(rx.icon("send", size=16), on_click=ChatState.send_message),
-                width="100%",
-            ),
-            width="100%",
-            max_width=MAX_WIDTH,
-            position="fixed",
-            bottom="4.4rem",
-            left="50%",
-            transform="translateX(-50%)",
-            background=CARD_BG,
-            border_top="1px solid var(--gray-4)",
-            padding="0.6rem 1rem",
-            z_index="15",
         ),
     )
 
@@ -210,15 +138,13 @@ def _collections_view() -> rx.Component:
     )
 
 
-def _hub_tab() -> rx.Component:
+def _finance_tab() -> rx.Component:
     return rx.tabs.root(
         rx.tabs.list(
-            rx.tabs.trigger("Чат", value="chat"),
             rx.tabs.trigger("Долги", value="debts"),
             rx.tabs.trigger("Сборы", value="collections"),
             width="100%",
         ),
-        rx.tabs.content(_chat_view(), value="chat", padding_top="0.75rem"),
         rx.tabs.content(_debts_view(), value="debts", padding_top="0.75rem"),
         rx.tabs.content(_collections_view(), value="collections", padding_top="0.75rem"),
         value=TabState.resident_sub_tab,
@@ -253,7 +179,7 @@ def _profile_tab() -> rx.Component:
 def resident_dashboard() -> rx.Component:
     body = rx.match(
         TabState.resident_tab,
-        ("hub", _hub_tab()),
+        ("finance", _finance_tab()),
         ("profile", _profile_tab()),
         _news_tab(),
     )

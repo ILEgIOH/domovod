@@ -8,7 +8,7 @@ from .setters import make_setter
 class TabState(rx.State):
     uk_tab: str = "news"
     resident_tab: str = "news"
-    resident_sub_tab: str = "chat"
+    resident_sub_tab: str = "debts"
 
     set_uk_tab = make_setter("uk_tab")
     set_resident_tab = make_setter("resident_tab")

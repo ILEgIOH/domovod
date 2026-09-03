@@ -8,7 +8,6 @@ from .pages.landing import landing
 from .pages.resident_dashboard import resident_dashboard
 from .pages.uk_dashboard import uk_dashboard
 from .state import AuthState
-from .state_chat import ChatState
 from .state_finance import FinanceState
 from .state_news import NewsState
 from .state_uk_admin import UKAdminState
@@ -49,8 +48,6 @@ app.add_page(
         AuthState.require_resident,
         NewsState.load_news,
         NewsState.start_live,
-        ChatState.load_chat,
-        ChatState.start_live,
         FinanceState.load_resident_finance,
         FinanceState.start_live,
     ],
