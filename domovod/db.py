@@ -12,6 +12,11 @@ from sqlmodel import Session, SQLModel, create_engine
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///domovod.db")
 
+# Render (и Heroku) выдают URL со схемой "postgres://", а современный
+# SQLAlchemy требует "postgresql://" — иначе create_engine падает.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 _connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=_connect_args)
 

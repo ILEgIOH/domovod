@@ -15,19 +15,22 @@ from .setters import make_setter
 class AuthState(rx.State):
     """Хранит текущую сессию пользователя (УК или житель).
 
-    Значения сохраняются в localStorage браузера, поэтому пользователь
-    остаётся авторизованным между перезагрузками страницы.
+    Значения сохраняются в sessionStorage браузера: сессия переживает
+    перезагрузку страницы, но не «расшаривается» между вкладками — иначе
+    вход как УК в одной вкладке и как житель в другой перезаписывали бы
+    друг друга (sessionStorage, в отличие от localStorage, свой у каждой
+    вкладки).
     """
 
     auth_view: str = "choose"
 
-    role: str = rx.LocalStorage("")
-    user_id: int = rx.LocalStorage(0)
-    tenant_id: int = rx.LocalStorage(0)
-    entrance_id: int = rx.LocalStorage(0)
-    building_id: int = rx.LocalStorage(0)
-    display_name: str = rx.LocalStorage("")
-    apartment: str = rx.LocalStorage("")
+    role: str = rx.SessionStorage("")
+    user_id: int = rx.SessionStorage(0)
+    tenant_id: int = rx.SessionStorage(0)
+    entrance_id: int = rx.SessionStorage(0)
+    building_id: int = rx.SessionStorage(0)
+    display_name: str = rx.SessionStorage("")
+    apartment: str = rx.SessionStorage("")
 
     # Заглушка "идентификации через MAX" — стабильный id на браузер/устройство,
     # пока не подключён настоящий MAX Bridge.
