@@ -53,10 +53,22 @@ class UKAdminState(AuthState):
     admin_error: str = ""
     copied_entrance_id: int = 0
     is_live: bool = False
+    selected_building_id: str = ""
 
     set_new_building_address = make_setter("new_building_address")
     set_new_entrance_building_id = make_setter("new_entrance_building_id")
     set_new_entrance_number = make_setter("new_entrance_number")
+    set_selected_building_id = make_setter("selected_building_id")
+
+    @rx.var
+    def visible_entrances(self) -> List[EntranceItem]:
+        if not self.selected_building_id:
+            return self.entrances
+        try:
+            bid = int(self.selected_building_id)
+        except ValueError:
+            return self.entrances
+        return [e for e in self.entrances if e.building_id == bid]
 
     @rx.event
     def load_admin_data(self):
@@ -118,6 +130,9 @@ class UKAdminState(AuthState):
                     )
                 )
             self.residents = resident_items
+
+        if not self.selected_building_id and self.buildings:
+            self.selected_building_id = str(self.buildings[0].id)
 
     @rx.event
     def add_building(self):

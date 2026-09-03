@@ -56,6 +56,10 @@ class Resident(SQLModel, table=True):
     entrance_id: int = Field(foreign_key="entrance.id", index=True)
     full_name: str
     apartment: str
+    # Общее число жильцов квартиры — заполняет первый, кто зарегистрировал
+    # эту квартиру в этом подъезде; остальные видят то же число и не могут
+    # его менять (см. AuthState.check_join_apartment / join_confirm).
+    household_size: int = 0
     # Житель, зашедший по коду/QR через MAX, не задаёт телефон и пароль —
     # его личность подтверждает MAX (пока — заглушка max_user_id).
     phone: Optional[str] = Field(default=None, unique=True, index=True)

@@ -39,10 +39,39 @@ def _join_form() -> rx.Component:
         rx.input(
             value=AuthState.res_apartment,
             on_change=AuthState.set_res_apartment,
+            on_blur=AuthState.check_join_apartment,
             placeholder="42",
             width="100%",
-            margin_bottom="1rem",
+            margin_bottom="0.6rem",
             auto_focus=True,
+        ),
+        field_label("Количество жильцов в квартире"),
+        rx.cond(
+            AuthState.join_apartment_taken,
+            rx.vstack(
+                rx.input(
+                    value=AuthState.join_apartment_household.to_string(),
+                    is_disabled=True,
+                    width="100%",
+                ),
+                rx.text(
+                    "Эту квартиру уже зарегистрировал другой житель — изменить "
+                    "число жильцов может только он.",
+                    size="1",
+                    color="var(--gray-9)",
+                ),
+                spacing="1",
+                width="100%",
+                margin_bottom="1rem",
+            ),
+            rx.input(
+                value=AuthState.res_household_size,
+                on_change=AuthState.set_res_household_size,
+                placeholder="Например, 3",
+                type="number",
+                width="100%",
+                margin_bottom="1rem",
+            ),
         ),
         rx.button("Присоединиться", width="100%", on_click=AuthState.join_confirm),
         spacing="2",

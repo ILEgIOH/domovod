@@ -14,7 +14,7 @@ def _brand() -> rx.Component:
             rx.icon("house", size=30, color="white"),
             background="var(--accent-9)",
             padding="0.9rem",
-            border_radius="20px",
+            border_radius="999px",
         ),
         rx.heading("Домовод", size="7", weight="bold"),
         rx.text(

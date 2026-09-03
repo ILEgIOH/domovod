@@ -94,6 +94,22 @@ class FinanceState(AuthState):
     paying_collection_id: int = 0
     is_live: bool = False
 
+    @rx.var
+    def active_debts(self) -> List[DebtItem]:
+        return [d for d in self.debts if not d.is_paid]
+
+    @rx.var
+    def paid_debts(self) -> List[DebtItem]:
+        return [d for d in self.debts if d.is_paid]
+
+    @rx.var
+    def active_my_debts(self) -> List[DebtItem]:
+        return [d for d in self.my_debts if not d.is_paid]
+
+    @rx.var
+    def paid_my_debts(self) -> List[DebtItem]:
+        return [d for d in self.my_debts if d.is_paid]
+
     set_new_debt_resident_id = make_setter("new_debt_resident_id")
     set_new_debt_period = make_setter("new_debt_period")
     set_new_debt_category = make_setter("new_debt_category")
