@@ -56,8 +56,11 @@ class Resident(SQLModel, table=True):
     entrance_id: int = Field(foreign_key="entrance.id", index=True)
     full_name: str
     apartment: str
-    phone: str = Field(unique=True, index=True)
-    password_hash: str
+    # Житель, зашедший по коду/QR через MAX, не задаёт телефон и пароль —
+    # его личность подтверждает MAX (пока — заглушка max_user_id).
+    phone: Optional[str] = Field(default=None, unique=True, index=True)
+    password_hash: Optional[str] = Field(default=None)
+    max_user_id: Optional[str] = Field(default=None, unique=True, index=True)
     created_at: datetime = Field(default_factory=now_utc)
 
 
