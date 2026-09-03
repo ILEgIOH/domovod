@@ -106,7 +106,7 @@ class UKAdminState(AuthState):
                         id=r.id,
                         full_name=r.full_name,
                         apartment=r.apartment,
-                        phone=r.phone,
+                        phone=r.phone or "—",
                         entrance_number=ent.number if ent else 0,
                         building_address=building_map.get(
                             ent.building_id, "?"

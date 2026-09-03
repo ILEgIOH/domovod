@@ -1,106 +1,52 @@
-"""Вход жителя по ссылке-приглашению или QR-коду: /join?code=ABC123."""
+"""Вход жителя по ссылке-приглашению или QR-коду: /join?code=ABC123.
+
+Без пароля: личность подтверждает MAX (пока — заглушка). Нужно только
+подтвердить номер квартиры при первом входе — дальше это устройство
+будет узнаваться автоматически.
+"""
 
 from __future__ import annotations
 
 import reflex as rx
 
+from ..max_stub import STUB_DISPLAY_NAME
 from ..state import AuthState
 from ..ui import MAX_WIDTH, error_text, field_label
 
 
-def _register_form() -> rx.Component:
+def _join_form() -> rx.Component:
     return rx.vstack(
-        rx.heading("Регистрация жителя", size="5", margin_bottom="0.15rem"),
+        rx.icon("badge-check", size=28, color="var(--accent-9)"),
+        rx.heading("Вход через MAX", size="5", margin_top="0.5rem", margin_bottom="0.15rem"),
+        rx.text(
+            f"Вы входите как {STUB_DISPLAY_NAME} — имя и телефон подтянутся из MAX",
+            size="2",
+            color="var(--gray-10)",
+            text_align="center",
+        ),
         rx.cond(
             AuthState.join_entrance_label != "",
             rx.text(
                 AuthState.join_entrance_label,
                 size="2",
-                color="var(--gray-10)",
-                margin_bottom="0.75rem",
+                weight="medium",
+                margin_top="0.5rem",
+                margin_bottom="0.5rem",
             ),
         ),
         error_text(AuthState.res_error),
-        field_label("ФИО"),
-        rx.input(
-            value=AuthState.res_full_name,
-            on_change=AuthState.set_res_full_name,
-            placeholder="Иванов Иван Иванович",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
         field_label("Квартира"),
         rx.input(
             value=AuthState.res_apartment,
             on_change=AuthState.set_res_apartment,
             placeholder="42",
             width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Телефон"),
-        rx.input(
-            value=AuthState.res_phone,
-            on_change=AuthState.set_res_phone,
-            placeholder="+7 900 000-00-00",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Пароль"),
-        rx.input(
-            value=AuthState.res_password,
-            on_change=AuthState.set_res_password,
-            type="password",
-            placeholder="от 4 символов",
-            width="100%",
             margin_bottom="1rem",
+            auto_focus=True,
         ),
-        rx.button("Зарегистрироваться", width="100%", on_click=AuthState.resident_register),
-        rx.center(
-            rx.button(
-                "Уже зарегистрированы? Войти",
-                variant="ghost",
-                size="2",
-                on_click=AuthState.set_auth_view("resident_login"),
-            ),
-            width="100%",
-            padding_top="0.75rem",
-        ),
-        width="100%",
-    )
-
-
-def _login_form() -> rx.Component:
-    return rx.vstack(
-        rx.heading("Вход для жителей", size="5", margin_bottom="0.75rem"),
-        error_text(AuthState.res_login_error),
-        field_label("Телефон"),
-        rx.input(
-            value=AuthState.res_login_phone,
-            on_change=AuthState.set_res_login_phone,
-            placeholder="+7 900 000-00-00",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Пароль"),
-        rx.input(
-            value=AuthState.res_login_password,
-            on_change=AuthState.set_res_login_password,
-            type="password",
-            placeholder="••••••",
-            width="100%",
-            margin_bottom="1rem",
-        ),
-        rx.button("Войти", width="100%", on_click=AuthState.resident_login),
-        rx.center(
-            rx.button(
-                "Первый раз здесь? Регистрация",
-                variant="ghost",
-                size="2",
-                on_click=AuthState.set_auth_view("resident_register"),
-            ),
-            width="100%",
-            padding_top="0.75rem",
-        ),
+        rx.button("Присоединиться", width="100%", on_click=AuthState.join_confirm),
+        spacing="2",
+        align="center",
         width="100%",
     )
 
@@ -150,11 +96,7 @@ def join_page() -> rx.Component:
                 rx.cond(
                     AuthState.join_error != "",
                     _error_view(),
-                    rx.match(
-                        AuthState.auth_view,
-                        ("resident_login", _login_form()),
-                        _register_form(),
-                    ),
+                    _join_form(),
                 ),
             ),
             width="100%",

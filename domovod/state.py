@@ -6,6 +6,7 @@ import reflex as rx
 from sqlmodel import select
 
 from .db import get_session
+from .max_stub import STUB_DISPLAY_NAME, generate_device_id
 from .models import Building, Entrance, Resident, Tenant
 from .security import hash_password, verify_password
 from .setters import make_setter
@@ -27,6 +28,10 @@ class AuthState(rx.State):
     building_id: int = rx.LocalStorage(0)
     display_name: str = rx.LocalStorage("")
     apartment: str = rx.LocalStorage("")
+
+    # Заглушка "идентификации через MAX" — стабильный id на браузер/устройство,
+    # пока не подключён настоящий MAX Bridge.
+    max_device_id: str = rx.LocalStorage("")
 
     # --- поля форм входа/регистрации ---
     login_email: str = ""
@@ -228,8 +233,10 @@ class AuthState(rx.State):
             resident = session.exec(
                 select(Resident).where(Resident.phone == phone)
             ).first()
-            if not resident or not verify_password(
-                self.res_login_password, resident.password_hash
+            if (
+                not resident
+                or not resident.password_hash
+                or not verify_password(self.res_login_password, resident.password_hash)
             ):
                 self.res_login_error = "Неверный телефон или пароль"
                 return
@@ -252,20 +259,68 @@ class AuthState(rx.State):
         self.res_login_password = ""
         return rx.redirect("/app")
 
-    # ---------------- Житель: вход по ссылке/QR-коду ----------------
+    # ---------------- Житель: вход по ссылке/QR-коду (через MAX) ----------------
+
+    def _login_resident_record(self, resident: Resident, entrance: Entrance) -> None:
+        self.role = "resident"
+        self.user_id = resident.id
+        self.tenant_id = resident.tenant_id
+        self.entrance_id = resident.entrance_id
+        self.building_id = entrance.building_id
+        self.display_name = resident.full_name
+        self.apartment = resident.apartment
 
     @rx.event
     def join_via_code(self):
-        """Обрабатывает /join?code=...: проверяет код и подставляет его
-        в форму регистрации жителя, чтобы не вводить его вручную.
+        """Обрабатывает /join?code=...: если это устройство уже заходило
+        по этому приглашению — сразу авторизует (как в реальном MAX, где
+        личность приходит автоматически при каждом открытии мини-аппа).
+        Иначе просит только квартиру — имя и id подставляет заглушка MAX.
         """
         self.join_error = ""
         self.join_entrance_label = ""
-        if self.is_hydrated and self.is_resident:
+        if self.is_resident:
             return rx.redirect("/app")
         code = self.router.url.query_parameters.get("code", "").strip().upper()
         if not code:
             self.join_error = "В ссылке не указан код приглашения. Уточните её в управляющей компании."
+            return
+        if not self.max_device_id:
+            self.max_device_id = generate_device_id()
+        with get_session() as session:
+            entrance = session.exec(
+                select(Entrance).where(Entrance.invite_code == code)
+            ).first()
+            if not entrance:
+                self.join_error = "Код приглашения недействителен. Уточните ссылку в управляющей компании."
+                return
+
+            existing = session.exec(
+                select(Resident).where(Resident.max_user_id == self.max_device_id)
+            ).first()
+            if existing:
+                self._login_resident_record(existing, entrance)
+                return rx.redirect("/app")
+
+            building = session.get(Building, entrance.building_id)
+            label = f"{building.address if building else '?'} · подъезд {entrance.number}"
+        self.res_invite_code = code
+        self.res_apartment = ""
+        self.res_error = ""
+        self.join_entrance_label = label
+
+    @rx.event
+    def join_confirm(self):
+        """Довершает вход по ссылке/QR: создаёт жителя с данными-заглушкой
+        MAX (без пароля) и сразу авторизует."""
+        self.res_error = ""
+        apt = self.res_apartment.strip()
+        if not apt:
+            self.res_error = "Укажите номер квартиры"
+            return
+        code = self.res_invite_code.strip().upper()
+        if not code or not self.max_device_id:
+            self.join_error = "Ссылка устарела. Откройте её заново."
             return
         with get_session() as session:
             entrance = session.exec(
@@ -274,9 +329,15 @@ class AuthState(rx.State):
             if not entrance:
                 self.join_error = "Код приглашения недействителен. Уточните ссылку в управляющей компании."
                 return
-            building = session.get(Building, entrance.building_id)
-            label = f"{building.address if building else '?'} · подъезд {entrance.number}"
-        self.res_invite_code = code
-        self.res_error = ""
-        self.join_entrance_label = label
-        self.auth_view = "resident_register"
+            resident = Resident(
+                tenant_id=entrance.tenant_id,
+                entrance_id=entrance.id,
+                full_name=STUB_DISPLAY_NAME,
+                apartment=apt,
+                max_user_id=self.max_device_id,
+            )
+            session.add(resident)
+            session.commit()
+            session.refresh(resident)
+            self._login_resident_record(resident, entrance)
+        return rx.redirect("/app")
