@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import secrets
+
 import reflex as rx
 from sqlmodel import select
 
@@ -10,6 +12,12 @@ from .max_stub import STUB_DISPLAY_NAME, generate_device_id
 from .models import Building, Entrance, Resident, Tenant
 from .security import hash_password, verify_password
 from .setters import make_setter
+
+# --- фиксированный демо-стенд для проверки в один клик, без ввода данных ---
+DEMO_UK_EMAIL = "demo-uk@domovod.test"
+DEMO_UK_NAME = "Демо УК"
+DEMO_BUILDING_ADDRESS = "ул. Демо, д. 1"
+DEMO_APARTMENT = "1"
 
 
 class AuthState(rx.State):
@@ -342,5 +350,83 @@ class AuthState(rx.State):
             session.add(resident)
             session.commit()
             session.refresh(resident)
+            self._login_resident_record(resident, entrance)
+        return rx.redirect("/app")
+
+    # ---------------- Демо-вход в один клик (для проверки без ввода данных) ----------------
+
+    @staticmethod
+    def _ensure_demo_tenant(session) -> Tenant:
+        tenant = session.exec(select(Tenant).where(Tenant.email == DEMO_UK_EMAIL)).first()
+        if not tenant:
+            tenant = Tenant(
+                name=DEMO_UK_NAME,
+                email=DEMO_UK_EMAIL,
+                password_hash=hash_password(secrets.token_hex(16)),
+            )
+            session.add(tenant)
+            session.commit()
+            session.refresh(tenant)
+        return tenant
+
+    @staticmethod
+    def _ensure_demo_entrance(session, tenant: Tenant) -> Entrance:
+        building = session.exec(
+            select(Building).where(Building.tenant_id == tenant.id)
+        ).first()
+        if not building:
+            building = Building(tenant_id=tenant.id, address=DEMO_BUILDING_ADDRESS)
+            session.add(building)
+            session.commit()
+            session.refresh(building)
+        entrance = session.exec(
+            select(Entrance).where(Entrance.building_id == building.id)
+        ).first()
+        if not entrance:
+            entrance = Entrance(building_id=building.id, tenant_id=tenant.id, number=1)
+            session.add(entrance)
+            session.commit()
+            session.refresh(entrance)
+        return entrance
+
+    @rx.event
+    def demo_login_uk(self):
+        """Мгновенный вход в демо-кабинет УК — без email/пароля."""
+        with get_session() as session:
+            tenant = self._ensure_demo_tenant(session)
+            tenant_id, tenant_name = tenant.id, tenant.name
+        self.role = "uk"
+        self.user_id = tenant_id
+        self.tenant_id = tenant_id
+        self.display_name = tenant_name
+        return rx.redirect("/uk")
+
+    @rx.event
+    def demo_login_resident(self):
+        """Мгновенный вход в демо-кабинет жителя — без формы.
+
+        Использует тот же max_device_id, что и вход по QR/ссылке, поэтому
+        у каждого браузера свой демо-житель и повторные клики не плодят
+        дубликаты.
+        """
+        if not self.max_device_id:
+            self.max_device_id = generate_device_id()
+        with get_session() as session:
+            tenant = self._ensure_demo_tenant(session)
+            entrance = self._ensure_demo_entrance(session, tenant)
+            resident = session.exec(
+                select(Resident).where(Resident.max_user_id == self.max_device_id)
+            ).first()
+            if not resident:
+                resident = Resident(
+                    tenant_id=tenant.id,
+                    entrance_id=entrance.id,
+                    full_name=STUB_DISPLAY_NAME,
+                    apartment=DEMO_APARTMENT,
+                    max_user_id=self.max_device_id,
+                )
+                session.add(resident)
+                session.commit()
+                session.refresh(resident)
             self._login_resident_record(resident, entrance)
         return rx.redirect("/app")
