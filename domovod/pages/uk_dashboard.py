@@ -396,6 +396,51 @@ def _profile_tab() -> rx.Component:
                             align="center",
                             margin_top="0.35rem",
                         ),
+                        rx.text(
+                            e.join_url,
+                            size="1",
+                            color="var(--gray-9)",
+                            margin_top="0.5rem",
+                            style={"word_break": "break-all"},
+                        ),
+                        rx.hstack(
+                            rx.button(
+                                rx.cond(
+                                    UKAdminState.copied_entrance_id == e.id,
+                                    rx.hstack(
+                                        rx.icon("check", size=14),
+                                        rx.text("Скопировано"),
+                                        spacing="1",
+                                        align="center",
+                                    ),
+                                    rx.hstack(
+                                        rx.icon("copy", size=14),
+                                        rx.text("Скопировать ссылку"),
+                                        spacing="1",
+                                        align="center",
+                                    ),
+                                ),
+                                size="1",
+                                variant="soft",
+                                on_click=[
+                                    rx.set_clipboard(e.join_url),
+                                    UKAdminState.mark_copied(e.id),
+                                ],
+                            ),
+                            width="100%",
+                            margin_top="0.5rem",
+                        ),
+                        rx.center(
+                            rx.image(
+                                src=e.qr_data_uri,
+                                width="140px",
+                                height="140px",
+                                border_radius="8px",
+                                border="1px solid var(--gray-4)",
+                            ),
+                            width="100%",
+                            padding_top="0.6rem",
+                        ),
                     ),
                 ),
                 width="100%",

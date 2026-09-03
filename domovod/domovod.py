@@ -3,6 +3,7 @@
 import reflex as rx
 
 from .db import init_db
+from .pages.join import join_page
 from .pages.landing import landing
 from .pages.resident_dashboard import resident_dashboard
 from .pages.uk_dashboard import uk_dashboard
@@ -17,6 +18,13 @@ init_db()
 app = rx.App()
 
 app.add_page(landing, route="/", title="Домовод")
+
+app.add_page(
+    join_page,
+    route="/join",
+    title="Домовод · Вход по ссылке",
+    on_load=AuthState.join_via_code,
+)
 
 app.add_page(
     uk_dashboard,

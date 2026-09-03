@@ -6,7 +6,7 @@ import reflex as rx
 from sqlmodel import select
 
 from .db import get_session
-from .models import Entrance, Resident, Tenant
+from .models import Building, Entrance, Resident, Tenant
 from .security import hash_password, verify_password
 from .setters import make_setter
 
@@ -49,6 +49,10 @@ class AuthState(rx.State):
     res_login_phone: str = ""
     res_login_password: str = ""
     res_login_error: str = ""
+
+    # --- вход по ссылке/QR-коду (/join?code=...) ---
+    join_error: str = ""
+    join_entrance_label: str = ""
 
     set_auth_view = make_setter("auth_view")
     set_login_email = make_setter("login_email")
@@ -247,3 +251,32 @@ class AuthState(rx.State):
         self.apartment = r_apt
         self.res_login_password = ""
         return rx.redirect("/app")
+
+    # ---------------- Житель: вход по ссылке/QR-коду ----------------
+
+    @rx.event
+    def join_via_code(self):
+        """Обрабатывает /join?code=...: проверяет код и подставляет его
+        в форму регистрации жителя, чтобы не вводить его вручную.
+        """
+        self.join_error = ""
+        self.join_entrance_label = ""
+        if self.is_hydrated and self.is_resident:
+            return rx.redirect("/app")
+        code = self.router.url.query_parameters.get("code", "").strip().upper()
+        if not code:
+            self.join_error = "В ссылке не указан код приглашения. Уточните её в управляющей компании."
+            return
+        with get_session() as session:
+            entrance = session.exec(
+                select(Entrance).where(Entrance.invite_code == code)
+            ).first()
+            if not entrance:
+                self.join_error = "Код приглашения недействителен. Уточните ссылку в управляющей компании."
+                return
+            building = session.get(Building, entrance.building_id)
+            label = f"{building.address if building else '?'} · подъезд {entrance.number}"
+        self.res_invite_code = code
+        self.res_error = ""
+        self.join_entrance_label = label
+        self.auth_view = "resident_register"
