@@ -40,6 +40,13 @@ class AuthState(rx.State):
     display_name: str = rx.SessionStorage("")
     apartment: str = rx.SessionStorage("")
 
+    # Подъезд, для которого сейчас показывается общий экран «Дом»
+    # (объявления/сборы/инициативы/опросы). У жителя всегда свой — не
+    # переключается; у УК выбирается из своих подъездов (по умолчанию первый).
+    viewing_entrance_id: int = rx.SessionStorage(0)
+    # Человекочитаемый адрес+подъезд жителя (УК берёт его из UKAdminState.current_entrance).
+    home_label: str = rx.SessionStorage("")
+
     # Заглушка "идентификации через MAX" — стабильный id на браузер/устройство,
     # пока не подключён настоящий MAX Bridge.
     max_device_id: str = rx.LocalStorage("")
@@ -108,6 +115,16 @@ class AuthState(rx.State):
         self.building_id = 0
         self.display_name = ""
         self.apartment = ""
+        self.viewing_entrance_id = 0
+        self.home_label = ""
+
+    @rx.event
+    def set_viewing_entrance_id(self, value: str):
+        """УК выбирает, какой подъезд сейчас показывать на экране «Дом»."""
+        try:
+            self.viewing_entrance_id = int(value)
+        except (TypeError, ValueError):
+            self.viewing_entrance_id = 0
 
     @rx.event
     def logout(self):
@@ -287,6 +304,11 @@ class AuthState(rx.State):
         self.building_id = entrance.building_id
         self.display_name = resident.full_name
         self.apartment = resident.apartment
+        self.viewing_entrance_id = resident.entrance_id
+        with get_session() as session:
+            building = session.get(Building, entrance.building_id)
+        address = building.address if building else "?"
+        self.home_label = f"{address} · подъезд {entrance.number}"
 
     @rx.event
     def join_via_code(self):
