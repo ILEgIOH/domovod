@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import List
+from typing import List, Optional
 
 import reflex as rx
 from pydantic import BaseModel
@@ -11,6 +11,7 @@ from sqlmodel import select
 
 from .db import get_session
 from .models import Building, Entrance, Resident
+from .models import gen_invite_code
 from .qr import build_join_url, qr_data_uri
 from .setters import make_setter
 from .state import AuthState
@@ -54,6 +55,7 @@ class UKAdminState(AuthState):
     copied_entrance_id: int = 0
     is_live: bool = False
     selected_building_id: str = ""
+    confirm_regenerate_entrance_id: int = 0
 
     set_new_building_address = make_setter("new_building_address")
     set_new_entrance_building_id = make_setter("new_entrance_building_id")
@@ -69,6 +71,14 @@ class UKAdminState(AuthState):
         except ValueError:
             return self.entrances
         return [e for e in self.entrances if e.building_id == bid]
+
+    @rx.var
+    def current_entrance(self) -> Optional[EntranceItem]:
+        target = int(self.viewing_entrance_id or 0)
+        for e in self.entrances:
+            if e.id == target:
+                return e
+        return None
 
     @rx.event
     def load_admin_data(self):
@@ -133,6 +143,9 @@ class UKAdminState(AuthState):
 
         if not self.selected_building_id and self.buildings:
             self.selected_building_id = str(self.buildings[0].id)
+        valid_entrance_ids = {e.id for e in self.entrances}
+        if int(self.viewing_entrance_id or 0) not in valid_entrance_ids:
+            self.viewing_entrance_id = self.entrances[0].id if self.entrances else 0
 
     @rx.event
     def add_building(self):
@@ -177,6 +190,29 @@ class UKAdminState(AuthState):
     @rx.event
     def mark_copied(self, entrance_id: int):
         self.copied_entrance_id = entrance_id
+
+    @rx.event
+    def ask_regenerate_code(self, entrance_id: int):
+        self.confirm_regenerate_entrance_id = entrance_id
+
+    @rx.event
+    def cancel_regenerate_code(self):
+        self.confirm_regenerate_entrance_id = 0
+
+    @rx.event
+    def regenerate_invite_code(self):
+        """Перевыпускает код/QR подъезда — старая ссылка перестаёт работать."""
+        entrance_id = self.confirm_regenerate_entrance_id
+        self.confirm_regenerate_entrance_id = 0
+        if not entrance_id:
+            return
+        with get_session() as session:
+            entrance = session.get(Entrance, entrance_id)
+            if entrance and entrance.tenant_id == int(self.tenant_id):
+                entrance.invite_code = gen_invite_code()
+                session.add(entrance)
+                session.commit()
+        return UKAdminState.load_admin_data
 
     @rx.event
     def stop_live(self):

@@ -69,13 +69,14 @@ class Resident(SQLModel, table=True):
 
 
 class News(SQLModel, table=True):
-    """Новость от управляющей компании."""
+    """Объявление от управляющей компании (короткая «таблетка» на главном экране)."""
 
     id: Optional[int] = Field(default=None, primary_key=True)
     tenant_id: int = Field(index=True)
     building_id: Optional[int] = Field(default=None, index=True)
     title: str
     body: str
+    icon: str = "bell"
     author_name: str = ""
     created_at: datetime = Field(default_factory=now_utc)
 
@@ -94,7 +95,12 @@ class Debt(SQLModel, table=True):
 
 
 class Collection(SQLModel, table=True):
-    """Сбор денег с жителей подъезда (ЖКХ, ремонт и т.д.)."""
+    """Сбор денег с жителей подъезда (ЖКХ, ремонт и т.д.).
+
+    Может быть создан напрямую УК (status="published") или предложен
+    жителем (status="proposed") — тогда он ждёт, пока УК его отредактирует
+    и опубликует (см. FinanceState.propose_collection/publish_collection).
+    """
 
     id: Optional[int] = Field(default=None, primary_key=True)
     entrance_id: int = Field(index=True)
@@ -103,6 +109,9 @@ class Collection(SQLModel, table=True):
     description: str = ""
     category: str = "ЖКХ"
     target_amount: float = 0
+    end_date: Optional[datetime] = None
+    status: str = "published"  # "proposed" | "published"
+    proposed_by_resident_id: Optional[int] = None
     is_active: bool = True
     created_at: datetime = Field(default_factory=now_utc)
 
@@ -117,4 +126,71 @@ class CollectionPayment(SQLModel, table=True):
     amount: float = 0
     status: str = "pending"
     yk_payment_id: str = ""
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class Initiative(SQLModel, table=True):
+    """Инициатива жителей подъезда (субботник и т.п.) с голосованием «я за»."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    entrance_id: int = Field(index=True)
+    tenant_id: int = Field(index=True)
+    title: str
+    description: str = ""
+    needed_count: int = 0
+    author_name: str = ""
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class InitiativeVote(SQLModel, table=True):
+    """Голос «я за» жителя по инициативе."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    initiative_id: int = Field(foreign_key="initiative.id", index=True)
+    resident_id: int = Field(index=True)
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class Poll(SQLModel, table=True):
+    """Опрос среди жителей подъезда (например, «камера на домофон»)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    entrance_id: int = Field(index=True)
+    tenant_id: int = Field(index=True)
+    title: str
+    description: str = ""
+    author_name: str = ""
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class PollVote(SQLModel, table=True):
+    """Голос «я за» жителя по опросу."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    poll_id: int = Field(foreign_key="poll.id", index=True)
+    resident_id: int = Field(index=True)
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class UsefulAddress(SQLModel, table=True):
+    """Полезный адрес/контакт подъезда — задаёт УК, видят все жители."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    entrance_id: int = Field(index=True)
+    tenant_id: int = Field(index=True)
+    title: str
+    value: str
+    created_at: datetime = Field(default_factory=now_utc)
+
+
+class PersonalContact(SQLModel, table=True):
+    """Личный контакт пользователя (свой для УК и для каждого жителя)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    owner_role: str  # "uk" | "resident"
+    owner_id: int  # tenant_id или resident_id, в зависимости от owner_role
+    name: str
+    phone: str = ""
     created_at: datetime = Field(default_factory=now_utc)

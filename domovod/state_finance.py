@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import datetime
 from typing import List, Optional
 
 import reflex as rx
@@ -26,10 +27,15 @@ def _rub(value: float) -> str:
     return f"{value:,.0f} ₽".replace(",", " ")
 
 
+def _fmt_date(value) -> str:
+    return value.strftime("%d.%m.%Y") if value else ""
+
+
 class DebtItem(BaseModel):
     id: int
     resident_name: str
     apartment: str
+    entrance_id: int = 0
     entrance_number: int
     period: str
     category: str
@@ -53,6 +59,9 @@ class CollectionItem(BaseModel):
     remaining_fmt: str = "0 ₽"
     progress_pct: int
     is_active: bool
+    status: str = "published"
+    end_date_fmt: str = ""
+    proposed_by_name: str = ""
     my_contribution: float = 0
     my_contribution_fmt: str = "0 ₽"
     my_payment_pending: bool = False
@@ -61,6 +70,7 @@ class CollectionItem(BaseModel):
 class ResidentOption(BaseModel):
     id: int
     label: str
+    entrance_id: int = 0
 
 
 class EntranceOption(BaseModel):
@@ -88,7 +98,14 @@ class FinanceState(AuthState):
     new_col_description: str = ""
     new_col_category: str = "ЖКХ"
     new_col_amount: str = ""
+    new_col_end_date: str = ""
     col_error: str = ""
+
+    propose_col_title: str = ""
+    propose_col_description: str = ""
+    propose_col_amount: str = ""
+    propose_col_end_date: str = ""
+    propose_error: str = ""
 
     pay_error: str = ""
     paying_collection_id: int = 0
@@ -110,6 +127,41 @@ class FinanceState(AuthState):
     def paid_my_debts(self) -> List[DebtItem]:
         return [d for d in self.my_debts if d.is_paid]
 
+    @rx.var
+    def proposed_collections(self) -> List[CollectionItem]:
+        return [c for c in self.collections if c.status == "proposed"]
+
+    @rx.var
+    def published_collections(self) -> List[CollectionItem]:
+        return [c for c in self.collections if c.status == "published"]
+
+    @rx.var
+    def home_proposed_collections(self) -> List[CollectionItem]:
+        """Предложенные сборы текущего (выбранного УК) подъезда."""
+        return [c for c in self.proposed_collections if c.entrance_id == int(self.viewing_entrance_id)]
+
+    @rx.var
+    def home_published_collections(self) -> List[CollectionItem]:
+        """Опубликованные сборы текущего (выбранного УК) подъезда."""
+        return [c for c in self.published_collections if c.entrance_id == int(self.viewing_entrance_id)]
+
+    @rx.var
+    def home_debts(self) -> List[DebtItem]:
+        """Задолженности жителей текущего (выбранного УК) подъезда."""
+        return [d for d in self.debts if d.entrance_id == int(self.viewing_entrance_id)]
+
+    @rx.var
+    def home_active_debts(self) -> List[DebtItem]:
+        return [d for d in self.home_debts if not d.is_paid]
+
+    @rx.var
+    def home_paid_debts(self) -> List[DebtItem]:
+        return [d for d in self.home_debts if d.is_paid]
+
+    @rx.var
+    def home_resident_options(self) -> List[ResidentOption]:
+        return [r for r in self.resident_options if r.entrance_id == int(self.viewing_entrance_id)]
+
     set_new_debt_resident_id = make_setter("new_debt_resident_id")
     set_new_debt_period = make_setter("new_debt_period")
     set_new_debt_category = make_setter("new_debt_category")
@@ -119,6 +171,11 @@ class FinanceState(AuthState):
     set_new_col_description = make_setter("new_col_description")
     set_new_col_category = make_setter("new_col_category")
     set_new_col_amount = make_setter("new_col_amount")
+    set_new_col_end_date = make_setter("new_col_end_date")
+    set_propose_col_title = make_setter("propose_col_title")
+    set_propose_col_description = make_setter("propose_col_description")
+    set_propose_col_amount = make_setter("propose_col_amount")
+    set_propose_col_end_date = make_setter("propose_col_end_date")
 
     # ---------------- УК: загрузка данных ----------------
 
@@ -142,6 +199,7 @@ class FinanceState(AuthState):
                     label=f"{r.full_name} — кв. {r.apartment} (подъезд {entrance_map[r.entrance_id].number})"
                     if r.entrance_id in entrance_map
                     else f"{r.full_name} — кв. {r.apartment}",
+                    entrance_id=r.entrance_id,
                 )
                 for r in residents
             ]
@@ -163,6 +221,7 @@ class FinanceState(AuthState):
                         id=d.id,
                         resident_name=r.full_name,
                         apartment=r.apartment,
+                        entrance_id=r.entrance_id,
                         entrance_number=e.number if e else 0,
                         period=d.period,
                         category=d.category,
@@ -182,6 +241,7 @@ class FinanceState(AuthState):
             for c in col_rows:
                 collected = self._collected_amount(session, c.id)
                 e = entrance_map.get(c.entrance_id)
+                proposer = resident_map.get(c.proposed_by_resident_id or 0)
                 col_items.append(
                     CollectionItem(
                         id=c.id,
@@ -194,8 +254,13 @@ class FinanceState(AuthState):
                         target_fmt=_rub(c.target_amount),
                         collected_amount=collected,
                         collected_fmt=_rub(collected),
+                        remaining=max(c.target_amount - collected, 0),
+                        remaining_fmt=_rub(max(c.target_amount - collected, 0)),
                         progress_pct=self._pct(collected, c.target_amount),
                         is_active=c.is_active,
+                        status=c.status,
+                        end_date_fmt=_fmt_date(c.end_date),
+                        proposed_by_name=proposer.full_name if proposer else "",
                     )
                 )
             self.collections = col_items
@@ -215,6 +280,18 @@ class FinanceState(AuthState):
         if target <= 0:
             return 0
         return min(100, int(collected / target * 100))
+
+    @staticmethod
+    def _parse_date(value: str) -> Optional[datetime]:
+        value = value.strip()
+        if not value:
+            return None
+        for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+        return None
 
     @rx.event
     def add_debt(self):
@@ -256,11 +333,13 @@ class FinanceState(AuthState):
     @rx.event
     def create_collection(self):
         self.col_error = ""
-        if not self.new_col_entrance_id or not self.new_col_title.strip() or not self.new_col_amount:
+        if not int(self.viewing_entrance_id or 0):
+            self.col_error = "Выберите подъезд"
+            return
+        if not self.new_col_title.strip() or not self.new_col_amount:
             self.col_error = "Заполните все поля"
             return
         try:
-            entrance_id = int(self.new_col_entrance_id)
             amount = float(self.new_col_amount.replace(",", "."))
         except ValueError:
             self.col_error = "Некорректная сумма"
@@ -268,18 +347,22 @@ class FinanceState(AuthState):
         with get_session() as session:
             session.add(
                 Collection(
-                    entrance_id=entrance_id,
-                    tenant_id=self.tenant_id,
+                    entrance_id=int(self.viewing_entrance_id),
+                    tenant_id=int(self.tenant_id),
                     title=self.new_col_title.strip(),
                     description=self.new_col_description.strip(),
                     category=self.new_col_category,
                     target_amount=amount,
+                    end_date=self._parse_date(self.new_col_end_date),
+                    status="published",
+                    is_active=True,
                 )
             )
             session.commit()
         self.new_col_title = ""
         self.new_col_description = ""
         self.new_col_amount = ""
+        self.new_col_end_date = ""
         return FinanceState.load_uk_finance
 
     @rx.event
@@ -292,7 +375,63 @@ class FinanceState(AuthState):
                 session.commit()
         return FinanceState.load_uk_finance
 
-    # ---------------- Житель: просмотр и оплата ----------------
+    @rx.event
+    def publish_collection(self, collection_id: int):
+        """УК одобряет предложенный жителем сбор — он становится активным."""
+        with get_session() as session:
+            c = session.get(Collection, collection_id)
+            if c and c.tenant_id == int(self.tenant_id) and c.status == "proposed":
+                c.status = "published"
+                c.is_active = True
+                session.add(c)
+                session.commit()
+        return FinanceState.load_uk_finance
+
+    @rx.event
+    def reject_collection(self, collection_id: int):
+        """УК отклоняет предложенный сбор — удаляет его."""
+        with get_session() as session:
+            c = session.get(Collection, collection_id)
+            if c and c.tenant_id == int(self.tenant_id) and c.status == "proposed":
+                session.delete(c)
+                session.commit()
+        return FinanceState.load_uk_finance
+
+    # ---------------- Житель: просмотр, предложение и оплата ----------------
+
+    @rx.event
+    def propose_collection(self):
+        """Житель предлагает сбор — он появится у УК во «Предложенных»."""
+        self.propose_error = ""
+        title = self.propose_col_title.strip()
+        if not title or not self.propose_col_amount:
+            self.propose_error = "Заполните название и сумму"
+            return
+        try:
+            amount = float(self.propose_col_amount.replace(",", "."))
+        except ValueError:
+            self.propose_error = "Некорректная сумма"
+            return
+        with get_session() as session:
+            session.add(
+                Collection(
+                    entrance_id=self.entrance_id,
+                    tenant_id=self.tenant_id,
+                    title=title,
+                    description=self.propose_col_description.strip(),
+                    target_amount=amount,
+                    end_date=self._parse_date(self.propose_col_end_date),
+                    status="proposed",
+                    is_active=False,
+                    proposed_by_resident_id=self.user_id,
+                )
+            )
+            session.commit()
+        self.propose_col_title = ""
+        self.propose_col_description = ""
+        self.propose_col_amount = ""
+        self.propose_col_end_date = ""
+        return FinanceState.load_resident_finance
 
     @rx.event
     def load_resident_finance(self):
@@ -309,6 +448,7 @@ class FinanceState(AuthState):
                     id=d.id,
                     resident_name=self.display_name,
                     apartment=self.apartment,
+                    entrance_id=self.entrance_id,
                     entrance_number=0,
                     period=d.period,
                     category=d.category,
@@ -355,6 +495,8 @@ class FinanceState(AuthState):
                         remaining_fmt=_rub(remaining),
                         progress_pct=self._pct(collected, c.target_amount),
                         is_active=c.is_active,
+                        status=c.status,
+                        end_date_fmt=_fmt_date(c.end_date),
                         my_contribution=my_total,
                         my_contribution_fmt=_rub(my_total),
                         my_payment_pending=pending,

@@ -8,6 +8,8 @@ from .pages.landing import landing
 from .pages.resident_dashboard import resident_dashboard
 from .pages.uk_dashboard import uk_dashboard
 from .state import AuthState
+from .state_community import CommunityState
+from .state_contacts import ContactsState
 from .state_finance import FinanceState
 from .state_news import NewsState
 from .state_uk_admin import UKAdminState
@@ -37,6 +39,8 @@ app.add_page(
         UKAdminState.start_live,
         FinanceState.load_uk_finance,
         FinanceState.start_live,
+        CommunityState.load_community,
+        ContactsState.load_contacts,
     ],
 )
 
@@ -50,5 +54,7 @@ app.add_page(
         NewsState.start_live,
         FinanceState.load_resident_finance,
         FinanceState.start_live,
+        CommunityState.load_community,
+        ContactsState.load_contacts,
     ],
 )

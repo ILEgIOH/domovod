@@ -17,10 +17,14 @@ from .state import AuthState
 POLL_INTERVAL = 4
 
 
+ICON_CHOICES = ["bell", "zap", "droplet", "wrench", "triangle-alert", "megaphone"]
+
+
 class NewsItem(BaseModel):
     id: int
     title: str
     body: str
+    icon: str
     author_name: str
     created_at: str
 
@@ -30,11 +34,13 @@ class NewsState(AuthState):
 
     new_title: str = ""
     new_body: str = ""
+    new_icon: str = "bell"
     news_error: str = ""
     is_live: bool = False
 
     set_new_title = make_setter("new_title")
     set_new_body = make_setter("new_body")
+    set_new_icon = make_setter("new_icon")
 
     def _query_news(self) -> List[NewsItem]:
         if not self.tenant_id:
@@ -50,6 +56,7 @@ class NewsState(AuthState):
                 id=r.id,
                 title=r.title,
                 body=r.body,
+                icon=r.icon or "bell",
                 author_name=r.author_name,
                 created_at=r.created_at.strftime("%d.%m.%Y %H:%M"),
             )
@@ -71,12 +78,14 @@ class NewsState(AuthState):
                 tenant_id=self.tenant_id,
                 title=self.new_title.strip(),
                 body=self.new_body.strip(),
+                icon=self.new_icon,
                 author_name=self.display_name,
             )
             session.add(item)
             session.commit()
         self.new_title = ""
         self.new_body = ""
+        self.new_icon = "bell"
         return NewsState.load_news
 
     @rx.event
