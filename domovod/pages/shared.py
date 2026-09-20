@@ -14,14 +14,20 @@ from ..state_news import ICON_CHOICES, NewsState
 from ..state_uk_admin import UKAdminState
 from ..ui import CARD_BG, error_text, field_label, progress_bar, section_card
 
-ICON_COLORS = {
-    "zap": "amber",
-    "droplet": "blue",
-    "wrench": "gray",
-    "triangle-alert": "red",
-    "megaphone": "violet",
-    "bell": "teal",
-}
+def _icon_bg_color(icon) -> rx.Var:
+    """Цвет плашки объявления по иконке. `icon` — реактивный Var (элемент
+    foreach), поэтому обычный dict.get() тут не работает: ключом становится
+    сам объект Var, а не строка, и всегда попадает в default.
+    """
+    return rx.match(
+        icon,
+        ("zap", "var(--amber-9)"),
+        ("droplet", "var(--blue-9)"),
+        ("wrench", "var(--gray-9)"),
+        ("triangle-alert", "var(--red-9)"),
+        ("megaphone", "var(--violet-9)"),
+        "var(--iris-9)",
+    )
 
 
 # ==================================================================== Дом ===
@@ -50,7 +56,7 @@ def _identity_card() -> rx.Component:
                     rx.heading(AuthState.display_name, size="4"),
                     rx.cond(
                         AuthState.is_uk,
-                        rx.badge("Админ", color_scheme="teal"),
+                        rx.badge("Админ", color_scheme="iris"),
                     ),
                     spacing="2",
                     align="center",
@@ -182,7 +188,7 @@ def _announcement_pill(n) -> rx.Component:
             align="center",
         ),
         rx.text(n.body, size="1", color="rgba(255,255,255,0.8)", margin_top="0.15rem"),
-        background=f"var(--{ICON_COLORS.get(n.icon, 'teal')}-9)",
+        background=_icon_bg_color(n.icon),
         border_radius="14px",
         padding="0.6rem 0.9rem",
         white_space="nowrap",
@@ -558,7 +564,7 @@ def _initiative_card(i) -> rx.Component:
                         size="1",
                         radius="full",
                         variant="solid",
-                        color_scheme=rx.cond(i.i_voted, "gray", "yellow"),
+                        color_scheme=rx.cond(i.i_voted, "gray", "lime"),
                         on_click=CommunityState.toggle_initiative_vote(i.id),
                     ),
                 ),
@@ -645,7 +651,7 @@ def _poll_card(p) -> rx.Component:
                         size="1",
                         radius="full",
                         variant="solid",
-                        color_scheme=rx.cond(p.i_voted, "gray", "yellow"),
+                        color_scheme=rx.cond(p.i_voted, "gray", "lime"),
                         on_click=CommunityState.toggle_poll_vote(p.id),
                     ),
                 ),
@@ -851,12 +857,16 @@ def _create_section() -> rx.Component:
         rx.spacer(),
         rx.dialog.root(
             rx.dialog.trigger(
-                rx.icon_button(
-                    rx.icon("plus", size=18),
-                    radius="full",
-                    size="3",
-                    variant="soft",
-                    color_scheme="gray",
+                rx.box(
+                    rx.icon("plus", size=18, color="var(--accent-9)"),
+                    width="44px",
+                    height="44px",
+                    border_radius="999px",
+                    background="var(--gray-4)",
+                    display="flex",
+                    align_items="center",
+                    justify_content="center",
+                    cursor="pointer",
                 ),
             ),
             rx.dialog.content(
