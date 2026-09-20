@@ -39,7 +39,7 @@ def _splash_view() -> rx.Component:
                 size="3",
                 radius="full",
                 style={"background": BRAND_NEON, "color": "black"},
-                on_click=AuthState.set_auth_view("resident_register"),
+                on_click=AuthState.open_join_code_view,
             ),
             rx.text("или", size="2", color="var(--gray-9)"),
             rx.button(
@@ -182,39 +182,12 @@ def _uk_register_view() -> rx.Component:
             margin_bottom="1rem",
         ),
         rx.button("Зарегистрировать компанию", width="100%", on_click=AuthState.uk_register),
-        width="100%",
-    )
-
-
-def _resident_login_view() -> rx.Component:
-    return rx.vstack(
-        _back_link(),
-        rx.heading("Вход для жителей", size="5", margin_bottom="0.75rem"),
-        error_text(AuthState.res_login_error),
-        field_label("Телефон"),
-        rx.input(
-            value=AuthState.res_login_phone,
-            on_change=AuthState.set_res_login_phone,
-            placeholder="+7 900 000-00-00",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Пароль"),
-        rx.input(
-            value=AuthState.res_login_password,
-            on_change=AuthState.set_res_login_password,
-            type="password",
-            placeholder="••••••",
-            width="100%",
-            margin_bottom="1rem",
-        ),
-        rx.button("Войти", width="100%", on_click=AuthState.resident_login),
         rx.center(
             rx.button(
-                "Первый раз здесь? Регистрация по коду",
+                "Уже зарегистрированы? Войти",
                 variant="ghost",
                 size="2",
-                on_click=AuthState.set_auth_view("resident_register"),
+                on_click=AuthState.set_auth_view("uk_login"),
             ),
             width="100%",
             padding_top="0.75rem",
@@ -223,60 +196,81 @@ def _resident_login_view() -> rx.Component:
     )
 
 
-def _resident_register_view() -> rx.Component:
+def _join_code_view() -> rx.Component:
+    """Экран «Введите код»: ручной ввод кода приглашения (3 буквы + 3
+    цифры). Белая кнопка, пока код не введён полностью → фиолетовая,
+    когда готов к проверке → красная «Дом не найден», если код неверный."""
     return rx.vstack(
         _back_link(),
-        rx.heading("Регистрация жителя", size="5", margin_bottom="0.25rem"),
+        rx.heading("Введите код", size="6", weight="bold", margin_bottom="1.5rem"),
+        rx.center(
+            rx.input(
+                value=AuthState.join_code_display,
+                on_change=AuthState.set_join_code_input,
+                placeholder="XXX – 000",
+                text_align="center",
+                size="3",
+                style={
+                    "fontSize": "1.75rem",
+                    "fontWeight": "700",
+                    "letterSpacing": "0.05em",
+                },
+                background="var(--gray-3)",
+                border="none",
+                border_radius="14px",
+                height="4.5rem",
+                width="100%",
+            ),
+            width="100%",
+        ),
         rx.text(
-            "Код приглашения выдаёт ваша управляющая компания — он привязан к подъезду",
+            "Код обычно присылает администратор дома",
             size="2",
-            color="var(--gray-10)",
-            margin_bottom="0.75rem",
-        ),
-        error_text(AuthState.res_error),
-        field_label("Код приглашения"),
-        rx.input(
-            value=AuthState.res_invite_code,
-            on_change=AuthState.set_res_invite_code,
-            placeholder="Например, A1B2C3D4",
+            color="var(--gray-9)",
+            text_align="center",
+            padding_top="0.75rem",
             width="100%",
-            margin_bottom="0.6rem",
         ),
-        field_label("ФИО"),
-        rx.input(
-            value=AuthState.res_full_name,
-            on_change=AuthState.set_res_full_name,
-            placeholder="Иванов Иван Иванович",
+        rx.button(
+            rx.cond(AuthState.join_code_error, "Дом не найден", "Найти дом"),
             width="100%",
-            margin_bottom="0.6rem",
+            size="3",
+            radius="full",
+            margin_top="3rem",
+            disabled=AuthState.join_code_ready == False,  # noqa: E712
+            style=rx.cond(
+                AuthState.join_code_error,
+                {"background": "var(--red-9)", "color": "white"},
+                rx.cond(
+                    AuthState.join_code_ready,
+                    {"background": BRAND_PURPLE, "color": "white"},
+                    {"background": "var(--gray-4)", "color": "var(--gray-9)"},
+                ),
+            ),
+            on_click=AuthState.lookup_join_code,
         ),
-        field_label("Квартира"),
-        rx.input(
-            value=AuthState.res_apartment,
-            on_change=AuthState.set_res_apartment,
-            placeholder="42",
-            width="100%",
-            margin_bottom="0.6rem",
+        rx.cond(
+            AuthState.join_code_ready == False,  # noqa: E712
+            rx.text(
+                "Сначала введите код или запросите его у вашего ответственного по дому.",
+                size="1",
+                color="var(--gray-9)",
+                text_align="center",
+                padding_top="1rem",
+            ),
+            rx.cond(
+                AuthState.join_code_error,
+                rx.text(
+                    "Проверьте правильно ли написали код. Также мог обновить админ.",
+                    size="1",
+                    color="var(--gray-9)",
+                    text_align="center",
+                    padding_top="1rem",
+                ),
+            ),
         ),
-        field_label("Телефон"),
-        rx.input(
-            value=AuthState.res_phone,
-            on_change=AuthState.set_res_phone,
-            placeholder="+7 900 000-00-00",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Пароль"),
-        rx.input(
-            value=AuthState.res_password,
-            on_change=AuthState.set_res_password,
-            type="password",
-            placeholder="от 4 символов",
-            width="100%",
-            margin_bottom="1rem",
-        ),
-        rx.button("Зарегистрироваться", width="100%", on_click=AuthState.resident_register),
         width="100%",
+        align="center",
     )
 
 
@@ -287,8 +281,7 @@ def landing() -> rx.Component:
                 AuthState.auth_view,
                 ("uk_login", _uk_login_view()),
                 ("uk_register", _uk_register_view()),
-                ("resident_login", _resident_login_view()),
-                ("resident_register", _resident_register_view()),
+                ("join_code", _join_code_view()),
                 _splash_view(),
             ),
             width="100%",

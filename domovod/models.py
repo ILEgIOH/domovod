@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+import string
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -14,7 +15,11 @@ def now_utc() -> datetime:
 
 
 def gen_invite_code() -> str:
-    return secrets.token_hex(4).upper()
+    """Код приглашения в формате БУК-ВЫ+ЦИФ (3 буквы + 3 цифры, без дефиса
+    в хранении — дефис только для отображения/ввода)."""
+    letters = "".join(secrets.choice(string.ascii_uppercase) for _ in range(3))
+    digits = "".join(secrets.choice(string.digits) for _ in range(3))
+    return letters + digits
 
 
 class Tenant(SQLModel, table=True):

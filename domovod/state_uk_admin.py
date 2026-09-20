@@ -29,6 +29,7 @@ class EntranceItem(BaseModel):
     building_address: str
     number: int
     invite_code: str
+    invite_code_display: str
     residents_count: int
     join_url: str
     qr_data_uri: str
@@ -105,6 +106,8 @@ class UKAdminState(AuthState):
                     ).all()
                 )
                 join_url = build_join_url(origin, e.invite_code)
+                code = e.invite_code
+                code_display = f"{code[:3]} – {code[3:]}" if len(code) == 6 else code
                 entrance_items.append(
                     EntranceItem(
                         id=e.id,
@@ -112,6 +115,7 @@ class UKAdminState(AuthState):
                         building_address=building_map.get(e.building_id, "?"),
                         number=e.number,
                         invite_code=e.invite_code,
+                        invite_code_display=code_display,
                         residents_count=count,
                         join_url=join_url,
                         qr_data_uri=qr_data_uri(join_url),
