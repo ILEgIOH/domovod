@@ -5,78 +5,66 @@ from __future__ import annotations
 import reflex as rx
 
 from ..state import AuthState
-from ..ui import MAX_WIDTH, error_text, field_label, section_card
+from ..ui import BRAND_NEON, BRAND_PURPLE, MAX_WIDTH, error_text, field_label
 
 
-def _brand() -> rx.Component:
+def _splash_view() -> rx.Component:
+    """Заставка — первое, что видит пользователь. Ведёт либо к жителю
+    (регистрация по коду приглашения), либо к УК (регистрация компании)."""
     return rx.vstack(
-        rx.box(
-            rx.icon("house", size=30, color="white"),
-            background="var(--accent-9)",
-            padding="0.9rem",
-            border_radius="999px",
-        ),
-        rx.heading("Домовод", size="7", weight="bold"),
-        rx.text(
-            "Мини-приложение для связи жителей и управляющей компании",
-            size="2",
-            color="var(--gray-10)",
-            text_align="center",
-        ),
-        spacing="3",
-        align="center",
-        padding_bottom="1.5rem",
-    )
-
-
-def _choose_view() -> rx.Component:
-    return rx.vstack(
-        _brand(),
-        section_card(
-            rx.vstack(
-                rx.icon("users", size=22, color="var(--accent-9)"),
-                rx.heading("Я — житель", size="4"),
-                rx.text(
-                    "Новости дома, чат подъезда, задолженности и сборы",
-                    size="2",
-                    color="var(--gray-10)",
-                ),
-                rx.button(
-                    "Продолжить",
-                    width="100%",
-                    on_click=AuthState.set_auth_view("resident_login"),
-                ),
-                spacing="2",
-                align="start",
-                width="100%",
+        rx.spacer(),
+        rx.vstack(
+            rx.heading(
+                "Дом – это проще, когда все рядом",
+                size="7",
+                weight="bold",
+                text_align="center",
+                line_height="1.3",
             ),
-        ),
-        section_card(
-            rx.vstack(
-                rx.icon("building-2", size=22, color="var(--accent-9)"),
-                rx.heading("Я — управляющая компания", size="4"),
-                rx.text(
-                    "Публикация новостей, задолженности и сборы жильцов",
-                    size="2",
-                    color="var(--gray-10)",
-                ),
-                rx.button(
-                    "Продолжить",
-                    width="100%",
-                    variant="soft",
-                    on_click=AuthState.set_auth_view("uk_login"),
-                ),
-                spacing="2",
-                align="start",
-                width="100%",
+            rx.text(
+                "Сборы, инициативы, опросы и контакты — в одном месте",
+                size="2",
+                color="var(--gray-10)",
+                text_align="center",
             ),
+            spacing="3",
+            align="center",
+            padding_bottom="2.5rem",
+            width="100%",
         ),
         rx.vstack(
-            rx.text(
-                "Проверить без ввода данных",
-                size="1",
-                color="var(--gray-9)",
+            rx.button(
+                "Присоединиться к дому",
+                width="100%",
+                size="3",
+                radius="full",
+                style={"background": BRAND_NEON, "color": "black"},
+                on_click=AuthState.set_auth_view("resident_register"),
             ),
+            rx.text("или", size="2", color="var(--gray-9)"),
+            rx.button(
+                "Создать дом",
+                width="100%",
+                size="3",
+                radius="full",
+                style={"background": BRAND_PURPLE, "color": "white"},
+                on_click=AuthState.set_auth_view("uk_register"),
+            ),
+            spacing="3",
+            align="center",
+            width="100%",
+        ),
+        rx.vstack(
+            rx.text("Есть ссылка или QR?", size="1", color="var(--gray-9)", text_align="center"),
+            rx.text("Дом откроется автоматически", size="1", color="var(--gray-9)", text_align="center"),
+            spacing="0",
+            align="center",
+            padding_top="2.5rem",
+            width="100%",
+        ),
+        rx.spacer(),
+        rx.vstack(
+            rx.text("Проверить без ввода данных", size="1", color="var(--gray-8)"),
             rx.hstack(
                 rx.button(
                     "Демо: житель",
@@ -98,10 +86,12 @@ def _choose_view() -> rx.Component:
             spacing="2",
             align="center",
             width="100%",
-            padding_top="0.5rem",
+            padding_top="1.5rem",
         ),
         width="100%",
-        spacing="3",
+        min_height="100vh",
+        align="center",
+        spacing="0",
     )
 
 
@@ -299,7 +289,7 @@ def landing() -> rx.Component:
                 ("uk_register", _uk_register_view()),
                 ("resident_login", _resident_login_view()),
                 ("resident_register", _resident_register_view()),
-                _choose_view(),
+                _splash_view(),
             ),
             width="100%",
             max_width=MAX_WIDTH,

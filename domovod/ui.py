@@ -9,6 +9,11 @@ BG = "var(--gray-2)"
 CARD_BG = "var(--gray-1)"
 BORDER = "1px solid var(--gray-4)"
 
+# Фирменные цвета проекта (точные значения из макета — используем их
+# напрямую, а не приближённые оттенки из палитры Radix).
+BRAND_PURPLE = "#7885FF"
+BRAND_NEON = "#E7F53C"
+
 
 def phone_shell(*children, header: rx.Component | None = None) -> rx.Component:
     """Контейнер, имитирующий экран мини-приложения (мобильная ширина)."""
