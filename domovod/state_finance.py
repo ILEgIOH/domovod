@@ -111,6 +111,9 @@ class FinanceState(AuthState):
     paying_collection_id: int = 0
     is_live: bool = False
 
+    open_collection_id: int = 0
+    show_proposed_dialog: bool = False
+
     @rx.var
     def active_debts(self) -> List[DebtItem]:
         return [d for d in self.debts if not d.is_paid]
@@ -161,6 +164,20 @@ class FinanceState(AuthState):
     @rx.var
     def home_resident_options(self) -> List[ResidentOption]:
         return [r for r in self.resident_options if r.entrance_id == int(self.viewing_entrance_id)]
+
+    @rx.var
+    def open_collection_item(self) -> Optional[CollectionItem]:
+        """Сбор, открытый в карточке-деталях (клик по плитке в сетке)."""
+        target = int(self.open_collection_id or 0)
+        if not target:
+            return None
+        for c in self.collections:
+            if c.id == target:
+                return c
+        for c in self.my_collections:
+            if c.id == target:
+                return c
+        return None
 
     set_new_debt_resident_id = make_setter("new_debt_resident_id")
     set_new_debt_period = make_setter("new_debt_period")
@@ -386,6 +403,31 @@ class FinanceState(AuthState):
                 session.add(c)
                 session.commit()
         return FinanceState.load_uk_finance
+
+    @rx.event
+    def open_collection(self, collection_id: int):
+        self.open_collection_id = collection_id
+
+    @rx.event
+    def close_collection(self):
+        self.open_collection_id = 0
+
+    @rx.event
+    def set_collection_dialog_open(self, is_open: bool):
+        if not is_open:
+            self.open_collection_id = 0
+
+    @rx.event
+    def open_proposed_dialog(self):
+        self.show_proposed_dialog = True
+
+    @rx.event
+    def close_proposed_dialog(self):
+        self.show_proposed_dialog = False
+
+    @rx.event
+    def set_proposed_dialog_open(self, is_open: bool):
+        self.show_proposed_dialog = is_open
 
     @rx.event
     def reject_collection(self, collection_id: int):

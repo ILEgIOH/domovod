@@ -27,9 +27,24 @@ ICON_COLORS = {
 # ==================================================================== Дом ===
 
 
+def _avatar() -> rx.Component:
+    return rx.box(
+        rx.icon("user-round", size=22, color="var(--gray-11)"),
+        width="44px",
+        height="44px",
+        border_radius="999px",
+        background="var(--gray-4)",
+        display="flex",
+        align_items="center",
+        justify_content="center",
+        flex_shrink="0",
+    )
+
+
 def _identity_card() -> rx.Component:
     return section_card(
         rx.hstack(
+            _avatar(),
             rx.vstack(
                 rx.hstack(
                     rx.heading(AuthState.display_name, size="4"),
@@ -44,69 +59,84 @@ def _identity_card() -> rx.Component:
                     AuthState.is_resident,
                     rx.text(f"Квартира {AuthState.apartment}", size="2", color="var(--gray-9)"),
                 ),
-                spacing="1",
+                spacing="0",
                 align="start",
             ),
             rx.spacer(),
             rx.icon_button(
                 rx.icon("log-out", size=16),
                 variant="ghost",
-                color_scheme="red",
+                color_scheme="gray",
+                size="1",
                 on_click=AuthState.logout,
             ),
             width="100%",
             align="center",
+            spacing="3",
         ),
     )
 
 
-def _entrance_picker() -> rx.Component:
+def _home_header() -> rx.Component:
+    """Заголовок с адресом/подъездом — у УК кликабелен и открывает переключатель."""
     return rx.cond(
         AuthState.is_uk,
         rx.cond(
-            UKAdminState.entrances.length() == 0,
+            UKAdminState.current_entrance,
+            rx.popover.root(
+                rx.popover.trigger(
+                    rx.vstack(
+                        rx.hstack(
+                            rx.heading(UKAdminState.current_entrance.building_address, size="5"),
+                            rx.icon("chevron-right", size=18, color="var(--gray-9)"),
+                            spacing="1",
+                            align="center",
+                        ),
+                        rx.text(
+                            "Подъезд " + UKAdminState.current_entrance.number.to_string(),
+                            size="2",
+                            color="var(--gray-9)",
+                        ),
+                        spacing="0",
+                        align="start",
+                        cursor="pointer",
+                    ),
+                ),
+                rx.popover.content(
+                    rx.vstack(
+                        rx.foreach(
+                            UKAdminState.entrances,
+                            lambda e: rx.popover.close(
+                                rx.hstack(
+                                    rx.text(
+                                        e.building_address + " · подъезд " + e.number.to_string(),
+                                        size="2",
+                                    ),
+                                    rx.spacer(),
+                                    rx.cond(
+                                        e.id == AuthState.viewing_entrance_id,
+                                        rx.icon("check", size=14, color="var(--accent-9)"),
+                                    ),
+                                    width="100%",
+                                    cursor="pointer",
+                                    padding="0.4rem 0.2rem",
+                                    on_click=[
+                                        AuthState.set_viewing_entrance_id(e.id.to_string()),
+                                        CommunityState.load_community,
+                                        ContactsState.load_contacts,
+                                    ],
+                                ),
+                            ),
+                        ),
+                        spacing="1",
+                        min_width="220px",
+                    ),
+                ),
+            ),
             rx.text(
                 "Добавьте дом и подъезд в «Контактах», чтобы открыть экран «Дом»",
                 size="2",
                 color="var(--gray-9)",
-            ),
-            rx.vstack(
-                rx.cond(
-                    UKAdminState.buildings.length() > 1,
-                    rx.select.root(
-                        rx.select.trigger(width="100%"),
-                        rx.select.content(
-                            rx.foreach(
-                                UKAdminState.buildings,
-                                lambda b: rx.select.item(b.address, value=b.id.to_string()),
-                            )
-                        ),
-                        value=UKAdminState.selected_building_id,
-                        on_change=UKAdminState.set_selected_building_id,
-                        width="100%",
-                    ),
-                ),
-                rx.select.root(
-                    rx.select.trigger(placeholder="Выберите подъезд", width="100%"),
-                    rx.select.content(
-                        rx.foreach(
-                            UKAdminState.visible_entrances,
-                            lambda e: rx.select.item(
-                                e.building_address + " · подъезд " + e.number.to_string(),
-                                value=e.id.to_string(),
-                            ),
-                        )
-                    ),
-                    value=AuthState.viewing_entrance_id.to_string(),
-                    on_change=[
-                        AuthState.set_viewing_entrance_id,
-                        CommunityState.load_community,
-                        ContactsState.load_contacts,
-                    ],
-                    width="100%",
-                ),
-                spacing="2",
-                width="100%",
             ),
         ),
         rx.text(
@@ -130,77 +160,82 @@ def _icon_picker(value, on_change) -> rx.Component:
 
 def _announcement_pill(n) -> rx.Component:
     return rx.box(
-        rx.hstack(
-            rx.icon(n.icon, size=15),
-            rx.text(n.title, weight="bold", size="2"),
-            rx.cond(
-                AuthState.is_uk,
-                rx.icon_button(
-                    rx.icon("x", size=12),
-                    size="1",
-                    variant="ghost",
-                    on_click=NewsState.delete_news(n.id),
-                ),
+        rx.cond(
+            AuthState.is_uk,
+            rx.icon_button(
+                rx.icon("x", size=11),
+                size="1",
+                variant="ghost",
+                color_scheme="gray",
+                on_click=NewsState.delete_news(n.id),
+                position="absolute",
+                top="0.3rem",
+                right="0.3rem",
+                background="rgba(255,255,255,0.18)",
+                border_radius="999px",
             ),
+        ),
+        rx.hstack(
+            rx.icon(n.icon, size=15, color="white"),
+            rx.text(n.title, weight="bold", size="2", color="white"),
             spacing="2",
             align="center",
         ),
-        rx.text(n.body, size="1", margin_top="0.15rem"),
-        background=f"var(--{ICON_COLORS.get(n.icon, 'teal')}-4)",
-        border_radius="999px",
-        padding="0.5rem 0.9rem",
+        rx.text(n.body, size="1", color="rgba(255,255,255,0.8)", margin_top="0.15rem"),
+        background=f"var(--{ICON_COLORS.get(n.icon, 'teal')}-9)",
+        border_radius="14px",
+        padding="0.6rem 0.9rem",
         white_space="nowrap",
         display="inline-block",
+        position="relative",
         margin_right="0.5rem",
+        min_width="160px",
     )
 
 
 def _announcements_row() -> rx.Component:
-    return rx.vstack(
-        rx.cond(
-            NewsState.news_items.length() == 0,
-            rx.text("Объявлений пока нет", size="2", color="var(--gray-9)"),
-            rx.box(
-                rx.foreach(NewsState.news_items, _announcement_pill),
-                width="100%",
-                overflow_x="auto",
-                padding_bottom="0.4rem",
-                white_space="nowrap",
-            ),
+    return rx.cond(
+        NewsState.news_items.length() == 0,
+        rx.text("Объявлений пока нет", size="2", color="var(--gray-9)"),
+        rx.box(
+            rx.foreach(NewsState.news_items, _announcement_pill),
+            width="100%",
+            overflow_x="auto",
+            padding_bottom="0.4rem",
+            white_space="nowrap",
         ),
-        rx.cond(
-            AuthState.is_uk,
-            section_card(
-                error_text(NewsState.news_error),
-                field_label("Заголовок"),
-                rx.input(
-                    value=NewsState.new_title,
-                    on_change=NewsState.set_new_title,
-                    placeholder="Отключение света",
-                    width="100%",
-                    margin_bottom="0.5rem",
-                ),
-                field_label("Детали"),
-                rx.input(
-                    value=NewsState.new_body,
-                    on_change=NewsState.set_new_body,
-                    placeholder="6 сен. с 10 до 18",
-                    width="100%",
-                    margin_bottom="0.5rem",
-                ),
-                field_label("Иконка"),
-                _icon_picker(NewsState.new_icon, NewsState.set_new_icon),
-                rx.button(
-                    rx.icon("plus", size=15),
-                    "Добавить объявление",
-                    width="100%",
-                    margin_top="0.6rem",
-                    on_click=NewsState.create_news,
-                ),
-            ),
+    )
+
+
+def _announcement_form() -> rx.Component:
+    return rx.vstack(
+        error_text(NewsState.news_error),
+        field_label("Заголовок"),
+        rx.input(
+            value=NewsState.new_title,
+            on_change=NewsState.set_new_title,
+            placeholder="Отключение света",
+            width="100%",
+        ),
+        field_label("Детали"),
+        rx.input(
+            value=NewsState.new_body,
+            on_change=NewsState.set_new_body,
+            placeholder="6 сен. с 10 до 18",
+            width="100%",
+        ),
+        field_label("Иконка"),
+        _icon_picker(NewsState.new_icon, NewsState.set_new_icon),
+        rx.button(
+            rx.icon("plus", size=15),
+            "Добавить объявление",
+            width="100%",
+            margin_top="0.4rem",
+            on_click=NewsState.create_news,
         ),
         width="100%",
         spacing="2",
+        align="start",
     )
 
 
@@ -233,13 +268,13 @@ def _proposed_collection_card(c) -> rx.Component:
                 variant="soft",
                 color_scheme="red",
                 size="1",
-                width="100%",
+                flex="1",
                 on_click=FinanceState.reject_collection(c.id),
             ),
             rx.button(
                 "Опубликовать",
                 size="1",
-                width="100%",
+                flex="1",
                 on_click=FinanceState.publish_collection(c.id),
             ),
             width="100%",
@@ -303,204 +338,141 @@ def _published_collection_card(c) -> rx.Component:
     )
 
 
-def _debt_row(d, clickable: bool = False) -> rx.Component:
-    badge = rx.badge(
-        rx.cond(d.is_paid, "Оплачено", "Долг"),
-        color_scheme=rx.cond(d.is_paid, "green", "red"),
-        **(
-            {"cursor": "pointer", "on_click": FinanceState.toggle_debt_paid(d.id)}
-            if clickable
-            else {}
-        ),
+def _collection_compact_card(c) -> rx.Component:
+    subtitle = rx.cond(
+        c.end_date_fmt != "",
+        "по " + c.target_fmt + " до " + c.end_date_fmt,
+        "по " + c.target_fmt,
     )
-    return rx.hstack(
-        rx.vstack(
-            rx.text(d.resident_name + " · кв. " + d.apartment, weight="bold", size="2"),
-            rx.text(d.category + " · " + d.period, size="1", color="var(--gray-9)"),
-            align="start",
-            spacing="0",
+    return rx.box(
+        rx.text(c.title, weight="bold", size="2"),
+        rx.text(subtitle, size="1", color="var(--gray-9)", margin_top="0.15rem"),
+        on_click=FinanceState.open_collection(c.id),
+        cursor="pointer",
+        background=CARD_BG,
+        border_radius="14px",
+        padding="0.7rem 0.8rem",
+        width="100%",
+    )
+
+
+def _collection_form() -> rx.Component:
+    return rx.vstack(
+        error_text(FinanceState.col_error),
+        field_label("Название"),
+        rx.input(
+            value=FinanceState.new_col_title,
+            on_change=FinanceState.set_new_col_title,
+            placeholder="Покраска лифта",
+            width="100%",
         ),
-        rx.spacer(),
-        rx.vstack(
-            rx.text(d.amount_fmt, weight="bold"),
-            badge,
-            align="end",
-            spacing="1",
+        rx.text_area(
+            placeholder="Описание (необязательно)",
+            value=FinanceState.new_col_description,
+            on_change=FinanceState.set_new_col_description,
+            width="100%",
+            rows="2",
+        ),
+        rx.hstack(
+            rx.input(
+                placeholder="Сумма, ₽",
+                value=FinanceState.new_col_amount,
+                on_change=FinanceState.set_new_col_amount,
+            ),
+            rx.input(
+                placeholder="До (дд.мм.гггг)",
+                value=FinanceState.new_col_end_date,
+                on_change=FinanceState.set_new_col_end_date,
+            ),
+            width="100%",
+        ),
+        rx.button(
+            "Запустить сбор",
+            width="100%",
+            margin_top="0.4rem",
+            on_click=FinanceState.create_collection,
         ),
         width="100%",
+        spacing="2",
         align="start",
     )
 
 
-def _debts_block() -> rx.Component:
-    return rx.vstack(
-        rx.heading("Долги", size="4", margin_bottom="0.2rem"),
-        rx.cond(
-            AuthState.is_uk,
-            rx.fragment(
-                section_card(
-                    error_text(FinanceState.debt_error),
-                    field_label("Житель"),
-                    rx.select.root(
-                        rx.select.trigger(placeholder="Выберите жителя", width="100%"),
-                        rx.select.content(
-                            rx.foreach(
-                                FinanceState.home_resident_options,
-                                lambda o: rx.select.item(o.label, value=o.id.to_string()),
-                            )
-                        ),
-                        value=FinanceState.new_debt_resident_id,
-                        on_change=FinanceState.set_new_debt_resident_id,
-                        width="100%",
-                    ),
-                    rx.input(
-                        placeholder="Период, напр. Август 2026",
-                        value=FinanceState.new_debt_period,
-                        on_change=FinanceState.set_new_debt_period,
-                        width="100%",
-                        margin_top="0.5rem",
-                    ),
-                    rx.hstack(
-                        rx.select(
-                            ["ЖКХ", "Капремонт", "Домофон", "Другое"],
-                            value=FinanceState.new_debt_category,
-                            on_change=FinanceState.set_new_debt_category,
-                        ),
-                        rx.input(
-                            placeholder="Сумма, ₽",
-                            value=FinanceState.new_debt_amount,
-                            on_change=FinanceState.set_new_debt_amount,
-                        ),
-                        width="100%",
-                        margin_top="0.5rem",
-                    ),
-                    rx.button(
-                        "Добавить начисление",
-                        width="100%",
-                        margin_top="0.6rem",
-                        on_click=FinanceState.add_debt,
-                    ),
-                ),
-                rx.tabs.root(
-                    rx.tabs.list(
-                        rx.tabs.trigger("Активные", value="active"),
-                        rx.tabs.trigger("История", value="history"),
-                        width="100%",
-                    ),
-                    rx.tabs.content(
-                        rx.cond(
-                            FinanceState.home_active_debts.length() == 0,
-                            rx.text("Задолженностей нет", size="2", color="var(--gray-9)", padding_top="0.5rem"),
-                            rx.foreach(FinanceState.home_active_debts, lambda d: section_card(_debt_row(d, clickable=True))),
-                        ),
-                        value="active",
-                        padding_top="0.6rem",
-                    ),
-                    rx.tabs.content(
-                        rx.cond(
-                            FinanceState.home_paid_debts.length() == 0,
-                            rx.text("Пока пусто", size="2", color="var(--gray-9)", padding_top="0.5rem"),
-                            rx.foreach(FinanceState.home_paid_debts, lambda d: section_card(_debt_row(d, clickable=True))),
-                        ),
-                        value="history",
-                        padding_top="0.6rem",
-                    ),
-                    default_value="active",
-                    width="100%",
-                ),
+def _collection_detail_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Сбор", style={"display": "none"}),
+            rx.cond(
+                FinanceState.open_collection_item,
+                _published_collection_card(FinanceState.open_collection_item),
             ),
-            rx.tabs.root(
-                rx.tabs.list(
-                    rx.tabs.trigger("Активные", value="active"),
-                    rx.tabs.trigger("История", value="history"),
-                    width="100%",
-                ),
-                rx.tabs.content(
-                    rx.cond(
-                        FinanceState.active_my_debts.length() == 0,
-                        rx.text("Задолженностей нет", size="2", color="var(--gray-9)", padding_top="0.5rem"),
-                        rx.foreach(FinanceState.active_my_debts, lambda d: section_card(_debt_row(d))),
-                    ),
-                    value="active",
-                    padding_top="0.6rem",
-                ),
-                rx.tabs.content(
-                    rx.cond(
-                        FinanceState.paid_my_debts.length() == 0,
-                        rx.text("Пока пусто", size="2", color="var(--gray-9)", padding_top="0.5rem"),
-                        rx.foreach(FinanceState.paid_my_debts, lambda d: section_card(_debt_row(d))),
-                    ),
-                    value="history",
-                    padding_top="0.6rem",
-                ),
-                default_value="active",
+            rx.button(
+                "Закрыть",
+                variant="soft",
                 width="100%",
+                margin_top="0.6rem",
+                on_click=FinanceState.close_collection,
             ),
+            max_width="360px",
         ),
-        width="100%",
-        spacing="2",
+        open=FinanceState.open_collection_id != 0,
+        on_open_change=FinanceState.set_collection_dialog_open,
     )
 
 
-def _collections_block() -> rx.Component:
+def _proposed_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Предложенные сборы"),
+            rx.foreach(FinanceState.home_proposed_collections, _proposed_collection_card),
+            rx.button(
+                "Закрыть",
+                variant="soft",
+                width="100%",
+                margin_top="0.2rem",
+                on_click=FinanceState.close_proposed_dialog,
+            ),
+            max_width="360px",
+        ),
+        open=FinanceState.show_proposed_dialog,
+        on_open_change=FinanceState.set_proposed_dialog_open,
+    )
+
+
+def _collections_section() -> rx.Component:
+    items = rx.cond(AuthState.is_uk, FinanceState.home_published_collections, FinanceState.my_collections)
     return rx.vstack(
-        rx.heading("Сборы", size="4", margin_bottom="0.2rem"),
-        error_text(FinanceState.pay_error),
-        rx.cond(
-            AuthState.is_uk,
-            rx.fragment(
+        rx.hstack(
+            rx.hstack(
+                rx.heading("Сборы", size="4"),
+                rx.icon("chevron-right", size=16, color="var(--gray-9)"),
+                spacing="1",
+                align="center",
+            ),
+            rx.spacer(),
+            rx.cond(
+                AuthState.is_uk,
                 rx.cond(
                     FinanceState.home_proposed_collections.length() > 0,
-                    rx.vstack(
-                        rx.hstack(
-                            rx.text("Предложенные", weight="bold", size="2"),
-                            rx.badge(FinanceState.home_proposed_collections.length().to_string()),
-                            spacing="2",
-                        ),
-                        rx.foreach(FinanceState.home_proposed_collections, _proposed_collection_card),
-                        width="100%",
-                    ),
-                ),
-                section_card(
-                    error_text(FinanceState.col_error),
-                    field_label("Название"),
-                    rx.input(
-                        value=FinanceState.new_col_title,
-                        on_change=FinanceState.set_new_col_title,
-                        placeholder="Покраска лифта",
-                        width="100%",
-                        margin_bottom="0.5rem",
-                    ),
-                    rx.text_area(
-                        placeholder="Описание (необязательно)",
-                        value=FinanceState.new_col_description,
-                        on_change=FinanceState.set_new_col_description,
-                        width="100%",
-                        margin_bottom="0.5rem",
-                        rows="2",
-                    ),
-                    rx.hstack(
-                        rx.input(
-                            placeholder="Сумма, ₽",
-                            value=FinanceState.new_col_amount,
-                            on_change=FinanceState.set_new_col_amount,
-                        ),
-                        rx.input(
-                            placeholder="До (дд.мм.гггг)",
-                            value=FinanceState.new_col_end_date,
-                            on_change=FinanceState.set_new_col_end_date,
-                        ),
-                        width="100%",
-                    ),
                     rx.button(
-                        "Запустить сбор",
-                        width="100%",
-                        margin_top="0.6rem",
-                        on_click=FinanceState.create_collection,
+                        rx.badge(
+                            FinanceState.home_proposed_collections.length().to_string(),
+                            color_scheme="red",
+                            variant="solid",
+                            radius="full",
+                        ),
+                        "Предложенных",
+                        size="1",
+                        variant="ghost",
+                        color_scheme="gray",
+                        on_click=FinanceState.open_proposed_dialog,
                     ),
                 ),
             ),
+            width="100%",
+            align="center",
         ),
+        error_text(FinanceState.pay_error),
         rx.cond(
             AuthState.is_resident,
             section_card(
@@ -544,88 +516,328 @@ def _collections_block() -> rx.Component:
             ),
         ),
         rx.cond(
-            AuthState.is_uk,
-            rx.foreach(FinanceState.home_published_collections, _published_collection_card),
-            rx.foreach(FinanceState.my_collections, _published_collection_card),
+            items.length() == 0,
+            rx.text("Сборов пока нет", size="2", color="var(--gray-9)"),
+            rx.grid(
+                rx.foreach(items, _collection_compact_card),
+                columns="2",
+                spacing="2",
+                width="100%",
+            ),
+        ),
+        _collection_detail_dialog(),
+        rx.cond(AuthState.is_uk, _proposed_dialog()),
+        width="100%",
+        spacing="2",
+    )
+
+
+def _initiative_card(i) -> rx.Component:
+    return section_card(
+        rx.hstack(
+            rx.vstack(
+                rx.text(i.title, weight="bold", size="2"),
+                rx.cond(
+                    i.description != "",
+                    rx.text(i.description, size="1", color="var(--gray-9)"),
+                ),
+                align="start",
+                spacing="0",
+            ),
+            rx.spacer(),
+            rx.vstack(
+                rx.text(
+                    i.votes.to_string() + "/" + i.needed_count.to_string(),
+                    size="2",
+                    weight="bold",
+                ),
+                rx.cond(
+                    AuthState.is_resident,
+                    rx.button(
+                        rx.cond(i.i_voted, "Я не за", "Я за!"),
+                        size="1",
+                        radius="full",
+                        variant="solid",
+                        color_scheme=rx.cond(i.i_voted, "gray", "yellow"),
+                        on_click=CommunityState.toggle_initiative_vote(i.id),
+                    ),
+                ),
+                align="end",
+                spacing="1",
+            ),
+            width="100%",
+            align="start",
+        ),
+    )
+
+
+def _initiative_form() -> rx.Component:
+    return rx.vstack(
+        error_text(CommunityState.initiative_error),
+        rx.input(
+            value=CommunityState.new_initiative_title,
+            on_change=CommunityState.set_new_initiative_title,
+            placeholder="Субботник",
+            width="100%",
+        ),
+        rx.text_area(
+            placeholder="Описание",
+            value=CommunityState.new_initiative_description,
+            on_change=CommunityState.set_new_initiative_description,
+            width="100%",
+            rows="2",
+        ),
+        rx.input(
+            placeholder="Нужно человек",
+            value=CommunityState.new_initiative_needed,
+            on_change=CommunityState.set_new_initiative_needed,
+            width="100%",
+        ),
+        rx.button(
+            "Создать инициативу",
+            width="100%",
+            margin_top="0.4rem",
+            on_click=CommunityState.create_initiative,
         ),
         width="100%",
         spacing="2",
+        align="start",
     )
 
 
 def _initiatives_block() -> rx.Component:
     return rx.vstack(
-        rx.heading("Инициативы", size="4", margin_bottom="0.2rem"),
+        rx.hstack(
+            rx.heading("Инициативы", size="4"),
+            rx.icon("chevron-right", size=16, color="var(--gray-9)"),
+            spacing="1",
+            align="center",
+        ),
         rx.cond(
             CommunityState.initiatives.length() == 0,
             rx.text("Инициатив пока нет", size="2", color="var(--gray-9)"),
-            rx.foreach(
-                CommunityState.initiatives,
-                lambda i: section_card(
-                    rx.hstack(
-                        rx.vstack(
-                            rx.text(i.title, weight="bold", size="2"),
-                            rx.cond(
-                                i.description != "",
-                                rx.text(i.description, size="1", color="var(--gray-9)"),
-                            ),
-                            align="start",
-                            spacing="0",
-                        ),
-                        rx.spacer(),
-                        rx.text(
-                            i.votes.to_string() + "/" + i.needed_count.to_string(),
-                            size="2",
-                            weight="bold",
-                        ),
-                        width="100%",
-                        align="start",
-                    ),
-                    rx.cond(
-                        AuthState.is_resident,
-                        rx.button(
-                            rx.cond(i.i_voted, "Я не за", "Я за!"),
-                            size="1",
-                            width="100%",
-                            margin_top="0.4rem",
-                            variant=rx.cond(i.i_voted, "soft", "solid"),
-                            on_click=CommunityState.toggle_initiative_vote(i.id),
-                        ),
+            rx.foreach(CommunityState.initiatives, _initiative_card),
+        ),
+        width="100%",
+        spacing="2",
+    )
+
+
+def _poll_card(p) -> rx.Component:
+    return section_card(
+        rx.hstack(
+            rx.vstack(
+                rx.text(p.title, weight="bold", size="2"),
+                rx.cond(
+                    p.description != "",
+                    rx.text(p.description, size="1", color="var(--gray-9)"),
+                ),
+                align="start",
+                spacing="0",
+            ),
+            rx.spacer(),
+            rx.vstack(
+                rx.text(p.votes.to_string() + " чел. одобрили", size="1", color="var(--gray-9)"),
+                rx.cond(
+                    AuthState.is_resident,
+                    rx.button(
+                        rx.cond(p.i_voted, "Я не за", "Я за!"),
+                        size="1",
+                        radius="full",
+                        variant="solid",
+                        color_scheme=rx.cond(p.i_voted, "gray", "yellow"),
+                        on_click=CommunityState.toggle_poll_vote(p.id),
                     ),
                 ),
+                align="end",
+                spacing="1",
             ),
+            width="100%",
+            align="start",
+        ),
+    )
+
+
+def _poll_form() -> rx.Component:
+    return rx.vstack(
+        error_text(CommunityState.poll_error),
+        rx.input(
+            value=CommunityState.new_poll_title,
+            on_change=CommunityState.set_new_poll_title,
+            placeholder="Камера на домофон",
+            width="100%",
+        ),
+        rx.text_area(
+            placeholder="Описание",
+            value=CommunityState.new_poll_description,
+            on_change=CommunityState.set_new_poll_description,
+            width="100%",
+            rows="2",
+        ),
+        rx.button(
+            "Создать опрос",
+            width="100%",
+            margin_top="0.4rem",
+            on_click=CommunityState.create_poll,
+        ),
+        width="100%",
+        spacing="2",
+        align="start",
+    )
+
+
+def _polls_block() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Опросы", size="4"),
+            rx.icon("chevron-right", size=16, color="var(--gray-9)"),
+            spacing="1",
+            align="center",
         ),
         rx.cond(
+            CommunityState.polls.length() == 0,
+            rx.text("Опросов пока нет", size="2", color="var(--gray-9)"),
+            rx.foreach(CommunityState.polls, _poll_card),
+        ),
+        width="100%",
+        spacing="2",
+    )
+
+
+def _debt_row(d, clickable: bool = False) -> rx.Component:
+    badge = rx.badge(
+        rx.cond(d.is_paid, "Оплачено", "Долг"),
+        color_scheme=rx.cond(d.is_paid, "green", "red"),
+        **(
+            {"cursor": "pointer", "on_click": FinanceState.toggle_debt_paid(d.id)}
+            if clickable
+            else {}
+        ),
+    )
+    return rx.hstack(
+        rx.vstack(
+            rx.text(d.resident_name + " · кв. " + d.apartment, weight="bold", size="2"),
+            rx.text(d.category + " · " + d.period, size="1", color="var(--gray-9)"),
+            align="start",
+            spacing="0",
+        ),
+        rx.spacer(),
+        rx.vstack(
+            rx.text(d.amount_fmt, weight="bold"),
+            badge,
+            align="end",
+            spacing="1",
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _debt_form() -> rx.Component:
+    return rx.vstack(
+        error_text(FinanceState.debt_error),
+        field_label("Житель"),
+        rx.select.root(
+            rx.select.trigger(placeholder="Выберите жителя", width="100%"),
+            rx.select.content(
+                rx.foreach(
+                    FinanceState.home_resident_options,
+                    lambda o: rx.select.item(o.label, value=o.id.to_string()),
+                )
+            ),
+            value=FinanceState.new_debt_resident_id,
+            on_change=FinanceState.set_new_debt_resident_id,
+            width="100%",
+        ),
+        rx.input(
+            placeholder="Период, напр. Август 2026",
+            value=FinanceState.new_debt_period,
+            on_change=FinanceState.set_new_debt_period,
+            width="100%",
+        ),
+        rx.hstack(
+            rx.select(
+                ["ЖКХ", "Капремонт", "Домофон", "Другое"],
+                value=FinanceState.new_debt_category,
+                on_change=FinanceState.set_new_debt_category,
+            ),
+            rx.input(
+                placeholder="Сумма, ₽",
+                value=FinanceState.new_debt_amount,
+                on_change=FinanceState.set_new_debt_amount,
+            ),
+            width="100%",
+        ),
+        rx.button(
+            "Добавить начисление",
+            width="100%",
+            margin_top="0.4rem",
+            on_click=FinanceState.add_debt,
+        ),
+        width="100%",
+        spacing="2",
+        align="start",
+    )
+
+
+def _debts_block() -> rx.Component:
+    return rx.vstack(
+        rx.heading("Долги", size="4", margin_bottom="0.2rem"),
+        rx.cond(
             AuthState.is_uk,
-            section_card(
-                error_text(CommunityState.initiative_error),
-                rx.input(
-                    value=CommunityState.new_initiative_title,
-                    on_change=CommunityState.set_new_initiative_title,
-                    placeholder="Субботник",
-                    width="100%",
-                    margin_bottom="0.5rem",
-                ),
-                rx.text_area(
-                    placeholder="Описание",
-                    value=CommunityState.new_initiative_description,
-                    on_change=CommunityState.set_new_initiative_description,
-                    width="100%",
-                    margin_bottom="0.5rem",
-                    rows="2",
-                ),
-                rx.input(
-                    placeholder="Нужно человек",
-                    value=CommunityState.new_initiative_needed,
-                    on_change=CommunityState.set_new_initiative_needed,
+            rx.tabs.root(
+                rx.tabs.list(
+                    rx.tabs.trigger("Активные", value="active"),
+                    rx.tabs.trigger("История", value="history"),
                     width="100%",
                 ),
-                rx.button(
-                    "Создать инициативу",
-                    width="100%",
-                    margin_top="0.6rem",
-                    on_click=CommunityState.create_initiative,
+                rx.tabs.content(
+                    rx.cond(
+                        FinanceState.home_active_debts.length() == 0,
+                        rx.text("Задолженностей нет", size="2", color="var(--gray-9)", padding_top="0.5rem"),
+                        rx.foreach(FinanceState.home_active_debts, lambda d: section_card(_debt_row(d, clickable=True))),
+                    ),
+                    value="active",
+                    padding_top="0.6rem",
                 ),
+                rx.tabs.content(
+                    rx.cond(
+                        FinanceState.home_paid_debts.length() == 0,
+                        rx.text("Пока пусто", size="2", color="var(--gray-9)", padding_top="0.5rem"),
+                        rx.foreach(FinanceState.home_paid_debts, lambda d: section_card(_debt_row(d, clickable=True))),
+                    ),
+                    value="history",
+                    padding_top="0.6rem",
+                ),
+                default_value="active",
+                width="100%",
+            ),
+            rx.tabs.root(
+                rx.tabs.list(
+                    rx.tabs.trigger("Активные", value="active"),
+                    rx.tabs.trigger("История", value="history"),
+                    width="100%",
+                ),
+                rx.tabs.content(
+                    rx.cond(
+                        FinanceState.active_my_debts.length() == 0,
+                        rx.text("Задолженностей нет", size="2", color="var(--gray-9)", padding_top="0.5rem"),
+                        rx.foreach(FinanceState.active_my_debts, lambda d: section_card(_debt_row(d))),
+                    ),
+                    value="active",
+                    padding_top="0.6rem",
+                ),
+                rx.tabs.content(
+                    rx.cond(
+                        FinanceState.paid_my_debts.length() == 0,
+                        rx.text("Пока пусто", size="2", color="var(--gray-9)", padding_top="0.5rem"),
+                        rx.foreach(FinanceState.paid_my_debts, lambda d: section_card(_debt_row(d))),
+                    ),
+                    value="history",
+                    padding_top="0.6rem",
+                ),
+                default_value="active",
+                width="100%",
             ),
         ),
         width="100%",
@@ -633,87 +845,60 @@ def _initiatives_block() -> rx.Component:
     )
 
 
-def _polls_block() -> rx.Component:
-    return rx.vstack(
-        rx.heading("Опросы", size="4", margin_bottom="0.2rem"),
-        rx.cond(
-            CommunityState.polls.length() == 0,
-            rx.text("Опросов пока нет", size="2", color="var(--gray-9)"),
-            rx.foreach(
-                CommunityState.polls,
-                lambda p: section_card(
-                    rx.hstack(
-                        rx.vstack(
-                            rx.text(p.title, weight="bold", size="2"),
-                            rx.cond(
-                                p.description != "",
-                                rx.text(p.description, size="1", color="var(--gray-9)"),
-                            ),
-                            align="start",
-                            spacing="0",
-                        ),
-                        rx.spacer(),
-                        rx.text(p.votes.to_string() + " чел. одобрили", size="1", color="var(--gray-9)"),
-                        width="100%",
-                        align="start",
-                    ),
-                    rx.cond(
-                        AuthState.is_resident,
-                        rx.button(
-                            rx.cond(p.i_voted, "Я не за", "Я за!"),
-                            size="1",
-                            width="100%",
-                            margin_top="0.4rem",
-                            variant=rx.cond(p.i_voted, "soft", "solid"),
-                            on_click=CommunityState.toggle_poll_vote(p.id),
-                        ),
-                    ),
+def _create_section() -> rx.Component:
+    return rx.hstack(
+        rx.heading("Создать", size="4"),
+        rx.spacer(),
+        rx.dialog.root(
+            rx.dialog.trigger(
+                rx.icon_button(
+                    rx.icon("plus", size=18),
+                    radius="full",
+                    size="3",
+                    variant="soft",
+                    color_scheme="gray",
                 ),
             ),
-        ),
-        rx.cond(
-            AuthState.is_uk,
-            section_card(
-                error_text(CommunityState.poll_error),
-                rx.input(
-                    value=CommunityState.new_poll_title,
-                    on_change=CommunityState.set_new_poll_title,
-                    placeholder="Камера на домофон",
+            rx.dialog.content(
+                rx.dialog.title("Создать"),
+                rx.tabs.root(
+                    rx.tabs.list(
+                        rx.tabs.trigger("Объявление", value="news"),
+                        rx.tabs.trigger("Сбор", value="col"),
+                        rx.tabs.trigger("Начисление", value="debt"),
+                        rx.tabs.trigger("Инициатива", value="init"),
+                        rx.tabs.trigger("Опрос", value="poll"),
+                        style={"overflow_x": "auto", "flex_wrap": "nowrap"},
+                    ),
+                    rx.tabs.content(_announcement_form(), value="news", padding_top="0.8rem"),
+                    rx.tabs.content(_collection_form(), value="col", padding_top="0.8rem"),
+                    rx.tabs.content(_debt_form(), value="debt", padding_top="0.8rem"),
+                    rx.tabs.content(_initiative_form(), value="init", padding_top="0.8rem"),
+                    rx.tabs.content(_poll_form(), value="poll", padding_top="0.8rem"),
+                    default_value="news",
                     width="100%",
-                    margin_bottom="0.5rem",
                 ),
-                rx.text_area(
-                    placeholder="Описание",
-                    value=CommunityState.new_poll_description,
-                    on_change=CommunityState.set_new_poll_description,
-                    width="100%",
-                    margin_bottom="0.5rem",
-                    rows="2",
-                ),
-                rx.button(
-                    "Создать опрос",
-                    width="100%",
-                    on_click=CommunityState.create_poll,
-                ),
+                max_width="380px",
             ),
         ),
         width="100%",
-        spacing="2",
+        align="center",
     )
 
 
 def home_tab() -> rx.Component:
     return rx.vstack(
         _identity_card(),
-        _entrance_picker(),
+        _home_header(),
         rx.cond(
             AuthState.viewing_entrance_id != 0,
             rx.vstack(
                 _announcements_row(),
-                _debts_block(),
-                _collections_block(),
+                _collections_section(),
                 _initiatives_block(),
                 _polls_block(),
+                _debts_block(),
+                rx.cond(AuthState.is_uk, _create_section()),
                 width="100%",
                 spacing="4",
             ),
@@ -950,11 +1135,11 @@ def _invite_block() -> rx.Component:
                     ),
                     rx.hstack(
                         rx.button(
-                            "Нет", variant="soft", width="100%", size="1",
+                            "Нет", variant="soft", flex="1", size="1",
                             on_click=UKAdminState.cancel_regenerate_code,
                         ),
                         rx.button(
-                            "Да", color_scheme="red", width="100%", size="1",
+                            "Да", color_scheme="red", flex="1", size="1",
                             on_click=UKAdminState.regenerate_invite_code,
                         ),
                         width="100%",
