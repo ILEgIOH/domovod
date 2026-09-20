@@ -196,31 +196,57 @@ def _uk_register_view() -> rx.Component:
     )
 
 
+def _code_box(index: int, value, placeholder: str) -> rx.Component:
+    # Фокус НЕ вешаем через статичный auto_focus (HTML-атрибут) — он бы
+    # срабатывал при каждой перерисовке и мог перетягивать фокус обратно
+    # на это поле. Вместо этого начальный фокус ставится один раз через
+    # AuthState.open_join_code_view, а дальше — через set_join_code_char/
+    # join_code_key_down.
+    return rx.input(
+        value=value,
+        on_change=AuthState.set_join_code_char(index),
+        on_key_down=AuthState.join_code_key_down(index),
+        placeholder=placeholder,
+        id=f"join_code_c{index}_input",
+        max_length=1,
+        text_align="center",
+        style={
+            "fontSize": "1.75rem",
+            "fontWeight": "700",
+            "caretColor": "transparent",
+        },
+        background="transparent",
+        border="none",
+        outline="none",
+        box_shadow="none",
+        padding="0",
+        width="1.3em",
+    )
+
+
 def _join_code_view() -> rx.Component:
-    """Экран «Введите код»: ручной ввод кода приглашения (3 буквы + 3
-    цифры). Белая кнопка, пока код не введён полностью → фиолетовая,
-    когда готов к проверке → красная «Дом не найден», если код неверный."""
+    """Экран «Введите код»: ручной ввод кода приглашения — 6 отдельных
+    полей по одному символу (3 буквы + 3 цифры), как в OTP-вводе, так
+    что вставить символ «в середину» или не того типа физически нельзя.
+    Белая кнопка, пока код не введён полностью → фиолетовая, когда готов
+    к проверке → красная «Дом не найден», если код неверный."""
     return rx.vstack(
         _back_link(),
         rx.heading("Введите код", size="6", weight="bold", margin_bottom="1.5rem"),
-        rx.center(
-            rx.input(
-                value=AuthState.join_code_display,
-                on_change=AuthState.set_join_code_input,
-                placeholder="XXX – 000",
-                text_align="center",
-                size="3",
-                style={
-                    "fontSize": "1.75rem",
-                    "fontWeight": "700",
-                    "letterSpacing": "0.05em",
-                },
-                background="var(--gray-3)",
-                border="none",
-                border_radius="14px",
-                height="4.5rem",
-                width="100%",
-            ),
+        rx.hstack(
+            _code_box(1, AuthState.join_code_c1, "X"),
+            _code_box(2, AuthState.join_code_c2, "X"),
+            _code_box(3, AuthState.join_code_c3, "X"),
+            rx.text("–", size="7", weight="bold", color="var(--gray-9)"),
+            _code_box(4, AuthState.join_code_c4, "0"),
+            _code_box(5, AuthState.join_code_c5, "0"),
+            _code_box(6, AuthState.join_code_c6, "0"),
+            align="center",
+            justify="center",
+            spacing="2",
+            background="var(--gray-3)",
+            border_radius="14px",
+            height="4.5rem",
             width="100%",
         ),
         rx.text(
