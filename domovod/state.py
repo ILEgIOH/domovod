@@ -63,15 +63,12 @@ class AuthState(rx.State):
     reg_error: str = ""
 
     res_invite_code: str = ""
-    res_full_name: str = ""
     res_apartment: str = ""
-    res_phone: str = ""
-    res_password: str = ""
     res_error: str = ""
 
-    res_login_phone: str = ""
-    res_login_password: str = ""
-    res_login_error: str = ""
+    # --- экран «Введите код» (ручной ввод, без ссылки/QR) ---
+    join_code_input: str = ""
+    join_code_error: bool = False
 
     # --- вход по ссылке/QR-коду (/join?code=...) ---
     join_error: str = ""
@@ -91,13 +88,7 @@ class AuthState(rx.State):
     set_reg_email = make_setter("reg_email")
     set_reg_password = make_setter("reg_password")
     set_reg_phone = make_setter("reg_phone")
-    set_res_invite_code = make_setter("res_invite_code")
-    set_res_full_name = make_setter("res_full_name")
     set_res_apartment = make_setter("res_apartment")
-    set_res_phone = make_setter("res_phone")
-    set_res_password = make_setter("res_password")
-    set_res_login_phone = make_setter("res_login_phone")
-    set_res_login_password = make_setter("res_login_password")
 
     @rx.var
     def is_uk(self) -> bool:
@@ -106,6 +97,15 @@ class AuthState(rx.State):
     @rx.var
     def is_resident(self) -> bool:
         return self.role == "resident" and self.user_id != 0
+
+    @rx.var
+    def join_code_ready(self) -> bool:
+        return len(self.join_code_input) == 6
+
+    @rx.var
+    def join_code_display(self) -> str:
+        code = self.join_code_input
+        return code if len(code) <= 3 else f"{code[:3]} – {code[3:]}"
 
     def _reset_session(self) -> None:
         self.role = ""
@@ -200,99 +200,33 @@ class AuthState(rx.State):
         self.reg_password = ""
         return rx.redirect("/uk")
 
-    # ---------------- Житель: вход/регистрация ----------------
+    # ---------------- Житель: экран «Введите код» ----------------
 
     @rx.event
-    def resident_register(self):
-        self.res_error = ""
-        code = self.res_invite_code.strip().upper()
-        name = self.res_full_name.strip()
-        apt = self.res_apartment.strip()
-        phone = self.res_phone.strip()
-        if not code or not name or not apt or not phone:
-            self.res_error = "Заполните все поля"
-            return
-        if len(self.res_password) < 4:
-            self.res_error = "Пароль должен быть не короче 4 символов"
+    def set_join_code_input(self, value: str):
+        cleaned = "".join(ch for ch in value.upper() if ch.isalnum())[:6]
+        self.join_code_input = cleaned
+        self.join_code_error = False
+
+    @rx.event
+    def open_join_code_view(self):
+        self.join_code_input = ""
+        self.join_code_error = False
+        self.auth_view = "join_code"
+
+    @rx.event
+    def lookup_join_code(self):
+        if not self.join_code_ready:
             return
         with get_session() as session:
             entrance = session.exec(
-                select(Entrance).where(Entrance.invite_code == code)
+                select(Entrance).where(Entrance.invite_code == self.join_code_input)
             ).first()
-            if not entrance:
-                self.res_error = "Код приглашения не найден. Уточните его в УК"
-                return
-            existing = session.exec(
-                select(Resident).where(Resident.phone == phone)
-            ).first()
-            if existing:
-                self.res_error = "Житель с таким телефоном уже зарегистрирован"
-                return
-            resident = Resident(
-                tenant_id=entrance.tenant_id,
-                entrance_id=entrance.id,
-                full_name=name,
-                apartment=apt,
-                phone=phone,
-                password_hash=hash_password(self.res_password),
-            )
-            session.add(resident)
-            session.commit()
-            session.refresh(resident)
-            r_id, t_id, e_id, b_id, r_name, r_apt = (
-                resident.id,
-                resident.tenant_id,
-                resident.entrance_id,
-                entrance.building_id,
-                resident.full_name,
-                resident.apartment,
-            )
-        self.role = "resident"
-        self.user_id = r_id
-        self.tenant_id = t_id
-        self.entrance_id = e_id
-        self.building_id = b_id
-        self.display_name = r_name
-        self.apartment = r_apt
-        self.res_password = ""
-        return rx.redirect("/app")
-
-    @rx.event
-    def resident_login(self):
-        self.res_login_error = ""
-        phone = self.res_login_phone.strip()
-        if not phone or not self.res_login_password:
-            self.res_login_error = "Введите телефон и пароль"
+        if not entrance:
+            self.join_code_error = True
             return
-        with get_session() as session:
-            resident = session.exec(
-                select(Resident).where(Resident.phone == phone)
-            ).first()
-            if (
-                not resident
-                or not resident.password_hash
-                or not verify_password(self.res_login_password, resident.password_hash)
-            ):
-                self.res_login_error = "Неверный телефон или пароль"
-                return
-            entrance = session.get(Entrance, resident.entrance_id)
-            r_id, t_id, e_id, b_id, r_name, r_apt = (
-                resident.id,
-                resident.tenant_id,
-                resident.entrance_id,
-                entrance.building_id if entrance else 0,
-                resident.full_name,
-                resident.apartment,
-            )
-        self.role = "resident"
-        self.user_id = r_id
-        self.tenant_id = t_id
-        self.entrance_id = e_id
-        self.building_id = b_id
-        self.display_name = r_name
-        self.apartment = r_apt
-        self.res_login_password = ""
-        return rx.redirect("/app")
+        self.join_code_error = False
+        return rx.redirect(f"/join?code={self.join_code_input}")
 
     # ---------------- Житель: вход по ссылке/QR-коду (через MAX) ----------------
 

@@ -1105,7 +1105,7 @@ def _invite_block() -> rx.Component:
                 weight="medium",
                 margin_bottom="0.5rem",
             ),
-            rx.code(entrance.invite_code, size="5"),
+            rx.code(entrance.invite_code_display, size="5"),
             rx.text(
                 entrance.join_url,
                 size="1",
