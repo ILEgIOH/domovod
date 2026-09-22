@@ -82,7 +82,8 @@ class AuthState(rx.State):
 
     # --- вход по ссылке/QR-коду (/join?code=...) ---
     join_error: str = ""
-    join_entrance_label: str = ""
+    join_address: str = ""
+    join_entrance_subtitle: str = ""
     join_entrance_id: int = 0
     res_household_size: str = ""
     # Квартира уже занята другим жителем — сколько там живёт человек
@@ -306,7 +307,8 @@ class AuthState(rx.State):
         Иначе просит только квартиру — имя и id подставляет заглушка MAX.
         """
         self.join_error = ""
-        self.join_entrance_label = ""
+        self.join_address = ""
+        self.join_entrance_subtitle = ""
         if self.is_resident:
             return rx.redirect("/app")
         code = self.router.url.query_parameters.get("code", "").strip().upper()
@@ -331,13 +333,15 @@ class AuthState(rx.State):
                 return rx.redirect("/app")
 
             building = session.get(Building, entrance.building_id)
-            label = f"{building.address if building else '?'} · подъезд {entrance.number}"
+            address = building.address if building else "?"
             entrance_id = entrance.id
+            entrance_number = entrance.number
         self.res_invite_code = code
         self.res_apartment = ""
         self.res_household_size = ""
         self.res_error = ""
-        self.join_entrance_label = label
+        self.join_address = address
+        self.join_entrance_subtitle = f"Подъезд {entrance_number}"
         self.join_entrance_id = entrance_id
         self.join_apartment_taken = False
         self.join_apartment_household = 0
