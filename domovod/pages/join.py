@@ -11,71 +11,101 @@ import reflex as rx
 
 from ..max_stub import STUB_DISPLAY_NAME
 from ..state import AuthState
-from ..ui import MAX_WIDTH, error_text, field_label
+from ..ui import BRAND_NEON, BRAND_PURPLE, MAX_WIDTH, error_text
+
+
+def _invite_field(label: str, child: rx.Component) -> rx.Component:
+    return rx.hstack(
+        rx.text(label, size="3", weight="medium", white_space="nowrap"),
+        child,
+        align="center",
+        spacing="3",
+        width="100%",
+    )
 
 
 def _join_form() -> rx.Component:
+    apartment_filled = AuthState.res_apartment != ""
     return rx.vstack(
-        rx.icon("badge-check", size=28, color="var(--accent-9)"),
-        rx.heading("Вход через MAX", size="5", margin_top="0.5rem", margin_bottom="0.15rem"),
-        rx.text(
-            f"Вы входите как {STUB_DISPLAY_NAME} — имя и телефон подтянутся из MAX",
-            size="2",
-            color="var(--gray-10)",
-            text_align="center",
+        rx.link(
+            rx.icon("chevron-left", size=20, color="var(--gray-9)"),
+            href="/",
+        ),
+        rx.heading(
+            "Вас пригласили!",
+            size="6",
+            weight="bold",
+            style={"color": BRAND_PURPLE},
+            margin_top="1.25rem",
+            margin_bottom="1.5rem",
         ),
         rx.cond(
-            AuthState.join_entrance_label != "",
-            rx.text(
-                AuthState.join_entrance_label,
-                size="2",
-                weight="medium",
-                margin_top="0.5rem",
-                margin_bottom="0.5rem",
+            AuthState.join_address != "",
+            rx.vstack(
+                rx.heading(AuthState.join_address, size="5", weight="bold"),
+                rx.text(AuthState.join_entrance_subtitle, size="2", color="var(--gray-8)"),
+                spacing="0",
+                align="start",
+                width="100%",
+                margin_bottom="2rem",
             ),
         ),
         error_text(AuthState.res_error),
-        field_label("Квартира"),
-        rx.input(
-            value=AuthState.res_apartment,
-            on_change=AuthState.set_res_apartment,
-            on_blur=AuthState.check_join_apartment,
-            placeholder="42",
-            width="100%",
-            margin_bottom="0.6rem",
-            auto_focus=True,
-        ),
-        field_label("Количество жильцов в квартире"),
-        rx.cond(
-            AuthState.join_apartment_taken,
-            rx.vstack(
-                rx.input(
-                    value=AuthState.join_apartment_household.to_string(),
-                    is_disabled=True,
-                    width="100%",
-                ),
-                rx.text(
-                    "Эту квартиру уже зарегистрировал другой житель — изменить "
-                    "число жильцов может только он.",
-                    size="1",
-                    color="var(--gray-9)",
-                ),
-                spacing="1",
-                width="100%",
-                margin_bottom="1rem",
-            ),
+        _invite_field(
+            "Ваше имя:",
             rx.input(
-                value=AuthState.res_household_size,
-                on_change=AuthState.set_res_household_size,
-                placeholder="Например, 3",
-                type="number",
-                width="100%",
-                margin_bottom="1rem",
+                value=STUB_DISPLAY_NAME,
+                disabled=True,
+                read_only=True,
+                flex="1",
+                size="3",
+                radius="large",
+                background="var(--gray-3)",
+                color="var(--gray-9)",
+                border="none",
             ),
         ),
-        rx.button("Присоединиться", width="100%", on_click=AuthState.join_confirm),
+        rx.box(height="1rem"),
+        _invite_field(
+            "Номер жилища:",
+            rx.input(
+                value=AuthState.res_apartment,
+                on_change=AuthState.set_res_apartment,
+                on_blur=AuthState.check_join_apartment,
+                placeholder="147",
+                flex="1",
+                size="3",
+                radius="large",
+                background="var(--gray-3)",
+                border="none",
+                weight="bold",
+                auto_focus=True,
+            ),
+        ),
+        rx.button(
+            rx.cond(apartment_filled, "Присоединиться!", "Присоединиться"),
+            width="100%",
+            size="3",
+            radius="full",
+            margin_top="3rem",
+            disabled=apartment_filled == False,  # noqa: E712
+            style=rx.cond(
+                apartment_filled,
+                {"background": BRAND_NEON, "color": "black"},
+                {"background": "var(--gray-4)", "color": "var(--gray-9)"},
+            ),
+            on_click=AuthState.join_confirm,
+        ),
+        rx.text(
+            "Напишите ваше имя и номер квартиры или дома",
+            size="1",
+            color="var(--gray-9)",
+            text_align="center",
+            padding_top="1rem",
+            width="100%",
+        ),
         spacing="2",
-        align="center",
+        align="start",
         width="100%",
     )
 
