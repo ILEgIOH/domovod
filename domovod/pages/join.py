@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import reflex as rx
 
-from ..max_stub import STUB_DISPLAY_NAME
 from ..state import AuthState
 from ..ui import BRAND_NEON, BRAND_PURPLE, MAX_WIDTH, error_text
 
@@ -54,14 +53,12 @@ def _join_form() -> rx.Component:
         _invite_field(
             "Ваше имя:",
             rx.input(
-                value=STUB_DISPLAY_NAME,
-                disabled=True,
-                read_only=True,
+                value=AuthState.res_full_name,
+                on_change=AuthState.set_res_full_name,
                 flex="1",
                 size="3",
                 radius="large",
                 background="var(--gray-3)",
-                color="var(--gray-9)",
                 border="none",
             ),
         ),
