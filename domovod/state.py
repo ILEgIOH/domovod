@@ -100,7 +100,6 @@ class AuthState(rx.State):
     set_reg_email = make_setter("reg_email")
     set_reg_password = make_setter("reg_password")
     set_reg_phone = make_setter("reg_phone")
-    set_res_apartment = make_setter("res_apartment")
 
     @rx.var
     def is_uk(self) -> bool:
@@ -307,6 +306,12 @@ class AuthState(rx.State):
         их нельзя было ввести вовсе."""
         cleaned = "".join(ch for ch in value if ch.isalpha() or ch == " ")
         self.res_full_name = cleaned
+
+    @rx.event
+    def set_res_apartment(self, value: str):
+        """Номер жилища: разрешаем только цифры — буквы и спецсимволы
+        отбрасываем на лету, как и в поле ФИО."""
+        self.res_apartment = "".join(ch for ch in value if ch.isdigit())
 
     @rx.event
     def join_via_code(self):
