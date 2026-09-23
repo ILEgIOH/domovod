@@ -51,7 +51,7 @@ def _join_form() -> rx.Component:
         ),
         error_text(AuthState.res_error),
         _invite_field(
-            "ФИО:",
+            "Ваше имя:",
             rx.input(
                 value=AuthState.res_full_name,
                 on_change=AuthState.set_res_full_name,
