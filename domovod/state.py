@@ -101,7 +101,6 @@ class AuthState(rx.State):
     set_reg_password = make_setter("reg_password")
     set_reg_phone = make_setter("reg_phone")
     set_res_apartment = make_setter("res_apartment")
-    set_res_full_name = make_setter("res_full_name")
 
     @rx.var
     def is_uk(self) -> bool:
@@ -300,6 +299,14 @@ class AuthState(rx.State):
             building = session.get(Building, entrance.building_id)
         address = building.address if building else "?"
         self.home_label = f"{address} · подъезд {entrance.number}"
+
+    @rx.event
+    def set_res_full_name(self, value: str):
+        """ФИО: разрешаем только буквы и пробелы — цифры и любые спецсимволы
+        («-», «!», «?», «/», «;» и т.п.) просто отбрасываем на лету, чтобы
+        их нельзя было ввести вовсе."""
+        cleaned = "".join(ch for ch in value if ch.isalpha() or ch == " ")
+        self.res_full_name = cleaned
 
     @rx.event
     def join_via_code(self):
