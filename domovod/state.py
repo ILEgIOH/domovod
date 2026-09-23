@@ -64,6 +64,7 @@ class AuthState(rx.State):
     reg_error: str = ""
 
     res_invite_code: str = ""
+    res_full_name: str = ""
     res_apartment: str = ""
     res_error: str = ""
 
@@ -100,6 +101,7 @@ class AuthState(rx.State):
     set_reg_password = make_setter("reg_password")
     set_reg_phone = make_setter("reg_phone")
     set_res_apartment = make_setter("res_apartment")
+    set_res_full_name = make_setter("res_full_name")
 
     @rx.var
     def is_uk(self) -> bool:
@@ -337,6 +339,7 @@ class AuthState(rx.State):
             entrance_id = entrance.id
             entrance_number = entrance.number
         self.res_invite_code = code
+        self.res_full_name = STUB_DISPLAY_NAME
         self.res_apartment = ""
         self.res_household_size = ""
         self.res_error = ""
@@ -371,9 +374,11 @@ class AuthState(rx.State):
 
     @rx.event
     def join_confirm(self):
-        """Довершает вход по ссылке/QR: создаёт жителя с данными-заглушкой
-        MAX (без пароля) и сразу авторизует."""
+        """Довершает вход по ссылке/QR: создаёт жителя (без пароля) и сразу
+        авторизует. Имя подставляется заглушкой MAX, но житель может
+        поправить его вручную перед подтверждением."""
         self.res_error = ""
+        full_name = self.res_full_name.strip() or STUB_DISPLAY_NAME
         apt = self.res_apartment.strip()
         if not apt:
             self.res_error = "Укажите номер квартиры"
@@ -409,7 +414,7 @@ class AuthState(rx.State):
             resident = Resident(
                 tenant_id=entrance.tenant_id,
                 entrance_id=entrance.id,
-                full_name=STUB_DISPLAY_NAME,
+                full_name=full_name,
                 apartment=apt,
                 household_size=household,
                 max_user_id=self.max_device_id,
