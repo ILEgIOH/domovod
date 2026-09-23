@@ -302,16 +302,32 @@ class AuthState(rx.State):
     @rx.event
     def set_res_full_name(self, value: str):
         """ФИО: разрешаем только буквы и пробелы — цифры и любые спецсимволы
-        («-», «!», «?», «/», «;» и т.п.) просто отбрасываем на лету, чтобы
-        их нельзя было ввести вовсе."""
+        («-», «!», «?», «/», «;» и т.п.) просто отбрасываем на лету. Ловит
+        то, что могло проскочить мимо key_down — вставку из буфера обмена,
+        автозаполнение и т.п."""
         cleaned = "".join(ch for ch in value if ch.isalpha() or ch == " ")
         self.res_full_name = cleaned
+
+    @rx.event
+    def res_full_name_key_down(self, key: str, info: KeyInputInfo):
+        """Не даёт вообще напечатать запрещённый символ (а не стирает его
+        постфактум) — так при ручном вводе с клавиатуры знак или цифра
+        даже на долю секунды не появляются в поле."""
+        if len(key) == 1 and not (key.isalpha() or key == " "):
+            return rx.prevent_default
 
     @rx.event
     def set_res_apartment(self, value: str):
         """Номер жилища: разрешаем только цифры — буквы и спецсимволы
         отбрасываем на лету, как и в поле ФИО."""
         self.res_apartment = "".join(ch for ch in value if ch.isdigit())
+
+    @rx.event
+    def res_apartment_key_down(self, key: str, info: KeyInputInfo):
+        """Аналогично ФИО: блокирует нажатие клавиши с буквой/знаком, а не
+        стирает её после того как она уже мелькнула в поле."""
+        if len(key) == 1 and not key.isdigit():
+            return rx.prevent_default
 
     @rx.event
     def join_via_code(self):

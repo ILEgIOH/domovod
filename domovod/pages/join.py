@@ -55,6 +55,7 @@ def _join_form() -> rx.Component:
             rx.input(
                 value=AuthState.res_full_name,
                 on_change=AuthState.set_res_full_name,
+                on_key_down=AuthState.res_full_name_key_down,
                 flex="1",
                 size="3",
                 radius="large",
@@ -68,6 +69,7 @@ def _join_form() -> rx.Component:
             rx.input(
                 value=AuthState.res_apartment,
                 on_change=AuthState.set_res_apartment,
+                on_key_down=AuthState.res_apartment_key_down,
                 on_blur=AuthState.check_join_apartment,
                 placeholder="147",
                 flex="1",
