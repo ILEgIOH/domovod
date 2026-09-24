@@ -214,6 +214,7 @@ def _code_box(index: int, value, placeholder: str) -> rx.Component:
             "fontSize": "1.75rem",
             "fontWeight": "700",
             "caretColor": "transparent",
+            "textTransform": "uppercase",
         },
         background="transparent",
         border="none",
