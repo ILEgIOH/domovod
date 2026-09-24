@@ -250,6 +250,7 @@ def _create_home_view() -> rx.Component:
         rx.input(
             value=AuthState.create_address,
             on_change=AuthState.set_create_address,
+            on_key_down=AuthState.create_address_key_down,
             placeholder="Можайское шоссе 100",
             background="transparent",
             border="none",

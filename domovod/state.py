@@ -109,7 +109,6 @@ class AuthState(rx.State):
     set_reg_email = make_setter("reg_email")
     set_reg_password = make_setter("reg_password")
     set_reg_phone = make_setter("reg_phone")
-    set_create_address = make_setter("create_address")
 
     @rx.var
     def create_home_ready(self) -> bool:
@@ -353,6 +352,19 @@ class AuthState(rx.State):
             return rx.prevent_default
 
     # ---------------- Экран «Создать дом» ----------------
+
+    @rx.event
+    def set_create_address(self, value: str):
+        """Адрес: разрешаем только буквы, цифры и пробелы — знаки препинания
+        («!», «?», «/», «;» и т.п.) отбрасываем на лету."""
+        self.create_address = "".join(
+            ch for ch in value if ch.isalpha() or ch.isdigit() or ch == " "
+        )
+
+    @rx.event
+    def create_address_key_down(self, key: str, info: KeyInputInfo):
+        if len(key) == 1 and not (key.isalpha() or key.isdigit() or key == " "):
+            return rx.prevent_default
 
     @rx.event
     def set_create_entrance_number(self, value: str):
