@@ -68,6 +68,15 @@ class AuthState(rx.State):
     res_apartment: str = ""
     res_error: str = ""
 
+    # --- экран «Создать дом»: заводит новый дом+подъезд без email/пароля,
+    # человек сразу становится админом этого дома. ФИО и номер жилища —
+    # необязательные, для случая когда создатель дома сам там живёт.
+    create_address: str = ""
+    create_entrance_number: str = ""
+    create_full_name: str = ""
+    create_apartment: str = ""
+    create_error: str = ""
+
     # --- экран «Введите код» (ручной ввод, без ссылки/QR): 6 отдельных
     # однобуквенных/одноцифровых полей (как OTP-ввод) — c1..c3 буквы,
     # c4..c6 цифры. Так физически нельзя вставить символ «в середину» или
@@ -100,6 +109,11 @@ class AuthState(rx.State):
     set_reg_email = make_setter("reg_email")
     set_reg_password = make_setter("reg_password")
     set_reg_phone = make_setter("reg_phone")
+    set_create_address = make_setter("create_address")
+
+    @rx.var
+    def create_home_ready(self) -> bool:
+        return bool(self.create_address.strip()) and bool(self.create_entrance_number.strip())
 
     @rx.var
     def is_uk(self) -> bool:
@@ -262,6 +276,15 @@ class AuthState(rx.State):
         return rx.set_focus("join_code_c1_input")
 
     @rx.event
+    def open_create_home_view(self):
+        self.create_address = ""
+        self.create_entrance_number = ""
+        self.create_full_name = ""
+        self.create_apartment = ""
+        self.create_error = ""
+        self.auth_view = "create_home"
+
+    @rx.event
     def lookup_join_code(self):
         if not self.join_code_ready:
             return
@@ -328,6 +351,93 @@ class AuthState(rx.State):
         стирает её после того как она уже мелькнула в поле."""
         if len(key) == 1 and not key.isdigit():
             return rx.prevent_default
+
+    # ---------------- Экран «Создать дом» ----------------
+
+    @rx.event
+    def set_create_entrance_number(self, value: str):
+        self.create_entrance_number = "".join(ch for ch in value if ch.isdigit())
+
+    @rx.event
+    def create_entrance_number_key_down(self, key: str, info: KeyInputInfo):
+        if len(key) == 1 and not key.isdigit():
+            return rx.prevent_default
+
+    @rx.event
+    def set_create_full_name(self, value: str):
+        self.create_full_name = "".join(ch for ch in value if ch.isalpha() or ch == " ")
+
+    @rx.event
+    def create_full_name_key_down(self, key: str, info: KeyInputInfo):
+        if len(key) == 1 and not (key.isalpha() or key == " "):
+            return rx.prevent_default
+
+    @rx.event
+    def set_create_apartment(self, value: str):
+        self.create_apartment = "".join(ch for ch in value if ch.isdigit())
+
+    @rx.event
+    def create_apartment_key_down(self, key: str, info: KeyInputInfo):
+        if len(key) == 1 and not key.isdigit():
+            return rx.prevent_default
+
+    @rx.event
+    def create_home_confirm(self):
+        """Заводит новый дом+подъезд без email/пароля — создатель сразу
+        становится админом (учётная запись УК создаётся под капотом со
+        случайным паролем, которым сам он никогда не пользуется). Если
+        заодно указал своё ФИО и номер жилища — регистрируется в этом
+        подъезде и как житель."""
+        self.create_error = ""
+        address = self.create_address.strip()
+        entrance_number_raw = self.create_entrance_number.strip()
+        if not address or not entrance_number_raw:
+            self.create_error = "Укажите название дома и подъезд"
+            return
+        entrance_number = int(entrance_number_raw)
+        full_name = self.create_full_name.strip()
+        apartment = self.create_apartment.strip()
+        with get_session() as session:
+            tenant = Tenant(
+                name=address,
+                email=f"home-{secrets.token_hex(8)}@domovod.local",
+                password_hash=hash_password(secrets.token_urlsafe(16)),
+            )
+            session.add(tenant)
+            session.commit()
+            session.refresh(tenant)
+
+            building = Building(tenant_id=tenant.id, address=address)
+            session.add(building)
+            session.commit()
+            session.refresh(building)
+
+            entrance = Entrance(
+                building_id=building.id, tenant_id=tenant.id, number=entrance_number
+            )
+            session.add(entrance)
+            session.commit()
+            session.refresh(entrance)
+
+            if full_name and apartment:
+                if not self.max_device_id:
+                    self.max_device_id = generate_device_id()
+                resident = Resident(
+                    tenant_id=tenant.id,
+                    entrance_id=entrance.id,
+                    full_name=full_name,
+                    apartment=apartment,
+                    max_user_id=self.max_device_id,
+                )
+                session.add(resident)
+                session.commit()
+
+            tenant_id, tenant_name = tenant.id, tenant.name
+        self.role = "uk"
+        self.user_id = tenant_id
+        self.tenant_id = tenant_id
+        self.display_name = tenant_name
+        return rx.redirect("/uk")
 
     @rx.event
     def join_via_code(self):
