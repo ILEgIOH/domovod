@@ -50,7 +50,7 @@ def _splash_view() -> rx.Component:
                 size="3",
                 radius="full",
                 style={"background": BRAND_PURPLE, "color": "white"},
-                on_click=AuthState.set_auth_view("uk_register"),
+                on_click=AuthState.open_create_home_view,
             ),
             spacing="3",
             align="center",
@@ -216,6 +216,7 @@ def _code_box(index: int, value, placeholder: str) -> rx.Component:
             "fontSize": "1.75rem",
             "fontWeight": "700",
             "caretColor": "transparent",
+            "textTransform": "uppercase",
         },
         background="transparent",
         border="none",
@@ -223,6 +224,110 @@ def _code_box(index: int, value, placeholder: str) -> rx.Component:
         box_shadow="none",
         padding="0",
         width="1.3em",
+    )
+
+
+def _create_home_view() -> rx.Component:
+    """Экран «Создать дом»: заводит новый дом+подъезд без email/пароля —
+    создатель сразу становится админом. ФИО и номер жилища необязательны
+    (для случая когда создатель сам там живёт)."""
+    home_ready = AuthState.create_home_ready
+    return rx.vstack(
+        _back_link(),
+        rx.heading(
+            "Создать дом",
+            size="6",
+            weight="bold",
+            style={"color": BRAND_PURPLE},
+            margin_bottom="1.5rem",
+        ),
+        error_text(AuthState.create_error),
+        field_label("Напишите название дома"),
+        rx.text(
+            "Желательно в виде адреса, оно будет видно жильцам на главной "
+            "странице и при приглашении.",
+            size="2",
+            color="var(--gray-9)",
+            margin_bottom="0.75rem",
+        ),
+        rx.input(
+            value=AuthState.create_address,
+            on_change=AuthState.set_create_address,
+            on_key_down=AuthState.create_address_key_down,
+            placeholder="Можайское шоссе 100",
+            background="transparent",
+            border="none",
+            outline="none",
+            box_shadow="none",
+            padding="0",
+            width="100%",
+            style={"fontSize": "1.5rem", "fontWeight": "700"},
+            auto_focus=True,
+        ),
+        rx.hstack(
+            rx.text("Подъезд", size="3", color="var(--gray-9)"),
+            rx.input(
+                value=AuthState.create_entrance_number,
+                on_change=AuthState.set_create_entrance_number,
+                on_key_down=AuthState.create_entrance_number_key_down,
+                placeholder="и подъезд, если есть",
+                background="transparent",
+                border="none",
+                outline="none",
+                box_shadow="none",
+                padding="0",
+                flex="1",
+                size="2",
+                color="var(--gray-9)",
+            ),
+            align="center",
+            spacing="2",
+            width="100%",
+            margin_bottom="2rem",
+        ),
+        field_label("Ваше имя:"),
+        rx.input(
+            value=AuthState.create_full_name,
+            on_change=AuthState.set_create_full_name,
+            on_key_down=AuthState.create_full_name_key_down,
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Номер жилища (если вы жилец):"),
+        rx.input(
+            value=AuthState.create_apartment,
+            on_change=AuthState.set_create_apartment,
+            on_key_down=AuthState.create_apartment_key_down,
+            width="100%",
+            margin_bottom="1rem",
+        ),
+        rx.button(
+            "Создать!",
+            width="100%",
+            size="3",
+            radius="full",
+            margin_top="1rem",
+            disabled=home_ready == False,  # noqa: E712
+            style=rx.cond(
+                home_ready,
+                {"background": BRAND_PURPLE, "color": "white"},
+                {"background": "var(--gray-4)", "color": "var(--gray-9)"},
+            ),
+            on_click=AuthState.create_home_confirm,
+        ),
+        rx.cond(
+            home_ready == False,  # noqa: E712
+            rx.text(
+                "Сначала заполните данные",
+                size="1",
+                color="var(--gray-9)",
+                text_align="center",
+                padding_top="1rem",
+                width="100%",
+            ),
+        ),
+        width="100%",
+        align="start",
     )
 
 
@@ -310,6 +415,7 @@ def landing() -> rx.Component:
                 ("uk_login", _uk_login_view()),
                 ("uk_register", _uk_register_view()),
                 ("join_code", _join_code_view()),
+                ("create_home", _create_home_view()),
                 _splash_view(),
             ),
             width="100%",
