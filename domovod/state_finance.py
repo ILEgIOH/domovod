@@ -121,6 +121,17 @@ class FinanceState(AuthState):
     # L01/L04: список «Все сборы» — "" скрыт, иначе активная вкладка.
     collections_list_view: str = ""
 
+    # --- M04: проверка/правка предложенного сбора перед публикацией ---
+    review_col_id: int = 0
+    review_col_title: str = ""
+    review_col_mode: str = "per_apartment"
+    review_col_amount: str = ""
+    review_col_end_date: str = ""
+    review_col_description: str = ""
+    review_col_instructions: str = ""
+    review_col_author: str = ""
+    review_error: str = ""
+
     @rx.var
     def active_debts(self) -> List[DebtItem]:
         return [d for d in self.debts if not d.is_paid]
@@ -218,6 +229,12 @@ class FinanceState(AuthState):
     set_propose_col_instructions = make_setter("propose_col_instructions")
     set_propose_col_amount = make_setter("propose_col_amount")
     set_propose_col_end_date = make_setter("propose_col_end_date")
+    set_review_col_title = make_setter("review_col_title")
+    set_review_col_mode = make_setter("review_col_mode")
+    set_review_col_amount = make_setter("review_col_amount")
+    set_review_col_end_date = make_setter("review_col_end_date")
+    set_review_col_description = make_setter("review_col_description")
+    set_review_col_instructions = make_setter("review_col_instructions")
 
     # ---------------- УК: загрузка данных ----------------
 
@@ -430,6 +447,58 @@ class FinanceState(AuthState):
                 c.is_active = True
                 session.add(c)
                 session.commit()
+        return FinanceState.load_uk_finance
+
+    @rx.event
+    def open_review_collection(self, collection_id: int):
+        """M04 — подгружает поля предложенного сбора в форму проверки/правки."""
+        self.review_error = ""
+        with get_session() as session:
+            c = session.get(Collection, collection_id)
+            if not c or c.tenant_id != int(self.tenant_id):
+                return
+            self.review_col_id = c.id
+            self.review_col_title = c.title
+            self.review_col_mode = c.amount_mode
+            self.review_col_amount = str(int(c.target_amount)) if c.target_amount else ""
+            self.review_col_end_date = _fmt_date(c.end_date)
+            self.review_col_description = c.description
+            self.review_col_instructions = c.instructions
+            author = ""
+            if c.proposed_by_resident_id:
+                proposer = session.get(Resident, c.proposed_by_resident_id)
+                if proposer:
+                    author = f"{proposer.full_name} · квартира {proposer.apartment}"
+            self.review_col_author = author
+
+    @rx.event
+    def save_and_publish_review_collection(self):
+        """M04 «Опубликовать» — сохраняет правки админа и публикует сбор."""
+        self.review_error = ""
+        title = self.review_col_title.strip()
+        try:
+            amount = float(self.review_col_amount.replace(",", "."))
+        except ValueError:
+            amount = 0
+        if not title or amount <= 0:
+            self.review_error = "Проверьте название и сумму"
+            return
+        with get_session() as session:
+            c = session.get(Collection, self.review_col_id)
+            if not c or c.tenant_id != int(self.tenant_id):
+                self.review_error = "Заявка не найдена — возможно, её уже обработали"
+                return
+            c.title = title
+            c.amount_mode = self.review_col_mode
+            c.target_amount = amount
+            c.end_date = self._parse_date(self.review_col_end_date)
+            c.description = self.review_col_description.strip()
+            c.instructions = self.review_col_instructions.strip()
+            c.status = "published"
+            c.is_active = True
+            session.add(c)
+            session.commit()
+        self.management_view = "proposals"
         return FinanceState.load_uk_finance
 
     @rx.event

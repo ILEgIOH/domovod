@@ -106,6 +106,15 @@ class CommunityState(AuthState):
     propose_initiative_event_date: str = ""
     propose_initiative_error: str = ""
 
+    # --- M04: проверка/правка предложенной инициативы перед публикацией ---
+    review_initiative_id: int = 0
+    review_initiative_title: str = ""
+    review_initiative_description: str = ""
+    review_initiative_needed: str = ""
+    review_initiative_event_date: str = ""
+    review_initiative_author: str = ""
+    review_error: str = ""
+
     # --- F07–F09: мастер предложения опроса жителем (до 10 вариантов) ---
     propose_poll_title: str = ""
     propose_poll_description: str = ""
@@ -141,6 +150,10 @@ class CommunityState(AuthState):
     set_propose_initiative_description = make_setter("propose_initiative_description")
     set_propose_initiative_needed = make_setter("propose_initiative_needed")
     set_propose_initiative_event_date = make_setter("propose_initiative_event_date")
+    set_review_initiative_title = make_setter("review_initiative_title")
+    set_review_initiative_description = make_setter("review_initiative_description")
+    set_review_initiative_needed = make_setter("review_initiative_needed")
+    set_review_initiative_event_date = make_setter("review_initiative_event_date")
 
     set_propose_poll_title = make_setter("propose_poll_title")
     set_propose_poll_description = make_setter("propose_poll_description")
@@ -496,6 +509,54 @@ class CommunityState(AuthState):
                 i.is_active = True
                 session.add(i)
                 session.commit()
+        return CommunityState.load_community
+
+    @rx.event
+    def open_review_initiative(self, initiative_id: int):
+        """M04 — подгружает поля предложенной инициативы в форму проверки/правки."""
+        self.review_error = ""
+        with get_session() as session:
+            i = session.get(Initiative, initiative_id)
+            if not i or i.tenant_id != int(self.tenant_id):
+                return
+            self.review_initiative_id = i.id
+            self.review_initiative_title = i.title
+            self.review_initiative_description = i.description
+            self.review_initiative_needed = str(i.needed_count) if i.needed_count else ""
+            self.review_initiative_event_date = i.event_date
+            author = ""
+            if i.proposed_by_resident_id:
+                proposer = session.get(Resident, i.proposed_by_resident_id)
+                if proposer:
+                    author = f"{proposer.full_name} · квартира {proposer.apartment}"
+            self.review_initiative_author = author
+
+    @rx.event
+    def save_and_publish_review_initiative(self):
+        """M04 «Опубликовать» — сохраняет правки админа и публикует инициативу."""
+        self.review_error = ""
+        title = self.review_initiative_title.strip()
+        if not title:
+            self.review_error = "Укажите название"
+            return
+        try:
+            needed = int(self.review_initiative_needed or 0)
+        except ValueError:
+            needed = 0
+        with get_session() as session:
+            i = session.get(Initiative, self.review_initiative_id)
+            if not i or i.tenant_id != int(self.tenant_id):
+                self.review_error = "Заявка не найдена — возможно, её уже обработали"
+                return
+            i.title = title
+            i.description = self.review_initiative_description.strip()
+            i.needed_count = needed
+            i.event_date = self.review_initiative_event_date.strip()
+            i.status = "published"
+            i.is_active = True
+            session.add(i)
+            session.commit()
+        self.management_view = "proposals"
         return CommunityState.load_community
 
     @rx.event

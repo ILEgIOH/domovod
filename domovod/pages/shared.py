@@ -2929,7 +2929,7 @@ def _management_menu() -> rx.Component:
                 "Ждут решения — посмотрите заявки",
                 "Пока нет новых предложений",
             ),
-            on_click=UKAdminState.open_management_proposals,
+            on_click=AuthState.open_management_proposals,
             badge=proposals_count,
         ),
         _management_menu_item("door-open", "Заявки в дом", "Скоро"),
@@ -2944,10 +2944,10 @@ def _management_menu() -> rx.Component:
 
 
 def _proposal_filter_chip(key: str, label: str) -> rx.Component:
-    selected = UKAdminState.proposal_filter == key
+    selected = AuthState.proposal_filter == key
     return rx.box(
         rx.text(label, size="2", weight="medium", color=rx.cond(selected, BRAND_ACTION_TEXT, "var(--gray-9)")),
-        on_click=UKAdminState.set_proposal_filter(key),
+        on_click=AuthState.set_proposal_filter(key),
         cursor="pointer",
         padding="0.45rem 0.9rem",
         border_radius="999px",
@@ -2956,14 +2956,41 @@ def _proposal_filter_chip(key: str, label: str) -> rx.Component:
     )
 
 
+def _proposal_row(title, subtitle, on_click) -> rx.Component:
+    """M03: строка заявки, ведущая в M04 (сборы/инициативы — там можно
+    поправить поля перед публикацией). Опросы пока проверяются старым
+    способом — карточкой с кнопками прямо в списке (см. _proposed_poll_card)."""
+    return section_card(
+        rx.hstack(
+            rx.vstack(
+                rx.hstack(
+                    rx.badge("Предложено", color_scheme="amber"),
+                    rx.cond(subtitle != "", rx.text(subtitle, size="1", color="var(--gray-9)")),
+                    spacing="2",
+                    align="center",
+                ),
+                rx.text(title, weight="bold", size="3", margin_top="0.2rem"),
+                spacing="0",
+                align="start",
+            ),
+            rx.spacer(),
+            rx.icon("chevron-right", size=16, color="var(--gray-8)"),
+            width="100%",
+            align="center",
+        ),
+        cursor="pointer",
+        on_click=on_click,
+    )
+
+
 def _proposals_screen() -> rx.Component:
     """M03 — входящие предложения жильцов (сборы/инициативы/опросы) одним
-    списком с фильтром по типу. Карточки — те же, что раньше жили в
-    попапах на главной (публикация/отклонение уже работают), просто
-    теперь у них есть отдельный полноценный экран, как в макете."""
-    show_collections = (UKAdminState.proposal_filter == "all") | (UKAdminState.proposal_filter == "collection")
-    show_initiatives = (UKAdminState.proposal_filter == "all") | (UKAdminState.proposal_filter == "initiative")
-    show_polls = (UKAdminState.proposal_filter == "all") | (UKAdminState.proposal_filter == "poll")
+    списком с фильтром по типу. Сборы и инициативы ведут в M04 (проверка
+    и правка полей); отклонение/публикация опросов пока остаются
+    отдельной, более простой карточкой без M04 — следующая партия работы."""
+    show_collections = (AuthState.proposal_filter == "all") | (AuthState.proposal_filter == "collection")
+    show_initiatives = (AuthState.proposal_filter == "all") | (AuthState.proposal_filter == "initiative")
+    show_polls = (AuthState.proposal_filter == "all") | (AuthState.proposal_filter == "poll")
     total = (
         FinanceState.home_proposed_collections.length()
         + CommunityState.proposed_initiatives.length()
@@ -2981,7 +3008,7 @@ def _proposals_screen() -> rx.Component:
                 size=22,
                 color="var(--gray-11)",
                 cursor="pointer",
-                on_click=UKAdminState.set_management_view("menu"),
+                on_click=AuthState.set_management_view("menu"),
             ),
             rx.heading("Входящие предложения", size="5", weight="bold"),
             spacing="2",
@@ -3006,8 +3033,36 @@ def _proposals_screen() -> rx.Component:
                 color="var(--gray-9)",
             ),
             rx.fragment(
-                rx.cond(show_collections, rx.foreach(FinanceState.home_proposed_collections, _proposed_collection_card)),
-                rx.cond(show_initiatives, rx.foreach(CommunityState.proposed_initiatives, _proposed_initiative_card)),
+                rx.cond(
+                    show_collections,
+                    rx.foreach(
+                        FinanceState.home_proposed_collections,
+                        lambda c: _proposal_row(
+                            c.title,
+                            c.proposed_by_name,
+                            on_click=[
+                                FinanceState.open_review_collection(c.id),
+                                AuthState.set_review_kind("collection"),
+                                AuthState.set_management_view("review"),
+                            ],
+                        ),
+                    ),
+                ),
+                rx.cond(
+                    show_initiatives,
+                    rx.foreach(
+                        CommunityState.proposed_initiatives,
+                        lambda i: _proposal_row(
+                            i.title,
+                            i.proposed_by_name,
+                            on_click=[
+                                CommunityState.open_review_initiative(i.id),
+                                AuthState.set_review_kind("initiative"),
+                                AuthState.set_management_view("review"),
+                            ],
+                        ),
+                    ),
+                ),
                 rx.cond(show_polls, rx.foreach(CommunityState.proposed_polls, _proposed_poll_card)),
             ),
         ),
@@ -3016,9 +3071,170 @@ def _proposals_screen() -> rx.Component:
     )
 
 
+def _review_header(subtitle) -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.icon(
+                "chevron-left",
+                size=22,
+                color="var(--gray-11)",
+                cursor="pointer",
+                on_click=AuthState.set_management_view("proposals"),
+            ),
+            rx.heading("Проверка предложения", size="5", weight="bold"),
+            spacing="2",
+            align="center",
+        ),
+        rx.cond(subtitle != "", rx.text(subtitle, size="2", color="var(--gray-9)")),
+        rx.text("Предложено жильцом", size="1", color="var(--gray-9)", margin_bottom="0.75rem"),
+        spacing="0",
+        align="start",
+        width="100%",
+    )
+
+
+def _review_actions(on_reject, on_publish) -> rx.Component:
+    return rx.hstack(
+        rx.button(
+            "Отклонить",
+            variant="soft",
+            color_scheme="red",
+            size="3",
+            flex="1",
+            on_click=on_reject,
+        ),
+        rx.button(
+            "Опубликовать",
+            size="3",
+            flex="1",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=on_publish,
+        ),
+        width="100%",
+        spacing="2",
+        margin_top="0.5rem",
+    )
+
+
+def _review_collection_screen() -> rx.Component:
+    """M04 — админ видит те же поля, что заполнял жилец (F02/F03), может
+    их поправить, и решает: опубликовать или отклонить с причиной."""
+    return rx.vstack(
+        _review_header(FinanceState.review_col_author),
+        error_text(FinanceState.review_error),
+        field_label("Название"),
+        rx.input(
+            value=FinanceState.review_col_title,
+            on_change=FinanceState.set_review_col_title,
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Как считаем сумму"),
+        _mode_toggle(
+            FinanceState.review_col_mode,
+            "per_apartment", "С квартиры",
+            "total", "Общая цель",
+            FinanceState.set_review_col_mode,
+        ),
+        field_label(rx.cond(FinanceState.review_col_mode == "per_apartment", "Сумма, ₽", "Общая цель, ₽")),
+        rx.input(
+            value=FinanceState.review_col_amount,
+            on_change=FinanceState.set_review_col_amount,
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Срок сбора"),
+        rx.input(
+            value=FinanceState.review_col_end_date,
+            on_change=FinanceState.set_review_col_end_date,
+            placeholder="дд.мм.гггг",
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Описание"),
+        rx.text_area(
+            value=FinanceState.review_col_description,
+            on_change=FinanceState.set_review_col_description,
+            width="100%",
+            rows="4",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Инструкция · необязательно"),
+        rx.text_area(
+            value=FinanceState.review_col_instructions,
+            on_change=FinanceState.set_review_col_instructions,
+            width="100%",
+            rows="2",
+            margin_bottom="1rem",
+        ),
+        _review_actions(
+            ProposalsState.open_reject("collection", FinanceState.review_col_id, FinanceState.review_col_title),
+            FinanceState.save_and_publish_review_collection,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _review_initiative_screen() -> rx.Component:
+    """M04 — то же самое для инициативы (F05/F06)."""
+    return rx.vstack(
+        _review_header(CommunityState.review_initiative_author),
+        error_text(CommunityState.review_error),
+        field_label("Название"),
+        rx.input(
+            value=CommunityState.review_initiative_title,
+            on_change=CommunityState.set_review_initiative_title,
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Дата и время"),
+        rx.input(
+            value=CommunityState.review_initiative_event_date,
+            on_change=CommunityState.set_review_initiative_event_date,
+            placeholder="3 октября 2026 · 10:00",
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Сколько нужно участников"),
+        rx.input(
+            value=CommunityState.review_initiative_needed,
+            on_change=CommunityState.set_review_initiative_needed,
+            placeholder="5",
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Описание"),
+        rx.text_area(
+            value=CommunityState.review_initiative_description,
+            on_change=CommunityState.set_review_initiative_description,
+            width="100%",
+            rows="4",
+            margin_bottom="1rem",
+        ),
+        _review_actions(
+            ProposalsState.open_reject(
+                "initiative", CommunityState.review_initiative_id, CommunityState.review_initiative_title
+            ),
+            CommunityState.save_and_publish_review_initiative,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
 def management_tab() -> rx.Component:
-    return rx.match(
-        UKAdminState.management_view,
-        ("proposals", _proposals_screen()),
-        _management_menu(),
+    return rx.fragment(
+        rx.cond(AuthState.is_uk, _reject_reason_dialog()),
+        rx.match(
+            AuthState.management_view,
+            ("proposals", _proposals_screen()),
+            ("review", rx.match(
+                AuthState.review_kind,
+                ("collection", _review_collection_screen()),
+                ("initiative", _review_initiative_screen()),
+                _management_menu(),
+            )),
+            _management_menu(),
+        ),
     )
