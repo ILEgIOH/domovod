@@ -113,6 +113,8 @@ class FinanceState(AuthState):
 
     open_collection_id: int = 0
     show_proposed_dialog: bool = False
+    # L01/L04: список «Все сборы» — "" скрыт, иначе активная вкладка.
+    collections_list_view: str = ""
 
     @rx.var
     def active_debts(self) -> List[DebtItem]:
@@ -147,6 +149,22 @@ class FinanceState(AuthState):
     def home_published_collections(self) -> List[CollectionItem]:
         """Опубликованные сборы текущего (выбранного УК) подъезда."""
         return [c for c in self.published_collections if c.entrance_id == int(self.viewing_entrance_id)]
+
+    @rx.var
+    def home_active_collections(self) -> List[CollectionItem]:
+        return [c for c in self.home_published_collections if c.is_active]
+
+    @rx.var
+    def home_archived_collections(self) -> List[CollectionItem]:
+        return [c for c in self.home_published_collections if not c.is_active]
+
+    @rx.var
+    def my_active_collections(self) -> List[CollectionItem]:
+        return [c for c in self.my_collections if c.is_active]
+
+    @rx.var
+    def my_archived_collections(self) -> List[CollectionItem]:
+        return [c for c in self.my_collections if not c.is_active]
 
     @rx.var
     def home_debts(self) -> List[DebtItem]:
@@ -418,6 +436,23 @@ class FinanceState(AuthState):
             self.open_collection_id = 0
 
     @rx.event
+    def open_collections_list(self):
+        self.collections_list_view = "active"
+
+    @rx.event
+    def close_collections_list(self):
+        self.collections_list_view = ""
+
+    @rx.event
+    def set_collections_list_tab(self, tab: str):
+        self.collections_list_view = tab
+
+    @rx.event
+    def set_collections_list_open(self, is_open: bool):
+        if not is_open:
+            self.collections_list_view = ""
+
+    @rx.event
     def open_proposed_dialog(self):
         self.show_proposed_dialog = True
 
@@ -505,7 +540,7 @@ class FinanceState(AuthState):
                 select(Collection)
                 .where(
                     Collection.entrance_id == self.entrance_id,
-                    Collection.is_active == True,  # noqa: E712
+                    Collection.status == "published",
                 )
                 .order_by(Collection.created_at.desc())
             ).all()

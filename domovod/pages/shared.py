@@ -464,6 +464,8 @@ def _collections_section() -> rx.Component:
                 rx.icon("chevron-right", size=16, color="var(--gray-9)"),
                 spacing="1",
                 align="center",
+                cursor="pointer",
+                on_click=FinanceState.open_collections_list,
             ),
             rx.spacer(),
             rx.cond(
@@ -628,6 +630,8 @@ def _initiatives_block() -> rx.Component:
             rx.icon("chevron-right", size=16, color="var(--gray-9)"),
             spacing="1",
             align="center",
+            cursor="pointer",
+            on_click=CommunityState.open_initiatives_list,
         ),
         rx.cond(
             CommunityState.initiatives.length() == 0,
@@ -709,6 +713,8 @@ def _polls_block() -> rx.Component:
             rx.icon("chevron-right", size=16, color="var(--gray-9)"),
             spacing="1",
             align="center",
+            cursor="pointer",
+            on_click=CommunityState.open_polls_list,
         ),
         rx.cond(
             CommunityState.polls.length() == 0,
@@ -966,6 +972,254 @@ def _empty_section_row(title: str, subtitle: str) -> rx.Component:
     )
 
 
+def _segmented_tabs(value: rx.Var, on_active, on_completed) -> rx.Component:
+    """Переключатель «Активные / Завершённые» (L01–L04) — не rx.tabs, а
+    пара плашек: выбранная — светло-фиолетовая, остальная — просто текст."""
+
+    def _segment(label: str, tab_value: str, on_click) -> rx.Component:
+        selected = value == tab_value
+        return rx.box(
+            rx.text(label, size="2", weight="medium", color=rx.cond(selected, BRAND_ACTION_TEXT, "var(--gray-9)")),
+            on_click=on_click,
+            cursor="pointer",
+            padding="0.5rem 1rem",
+            border_radius="999px",
+            background=rx.cond(selected, BRAND_PURPLE_TINT, "transparent"),
+        )
+
+    return rx.hstack(
+        _segment("Активные", "active", on_active),
+        _segment("Завершённые", "completed", on_completed),
+        spacing="1",
+    )
+
+
+def _list_row(title, subtitle, completed=False, on_click=None) -> rx.Component:
+    """Строка в списках L01–L04 — карточка с заголовком/подзаголовком,
+    у завершённых пунктов бейдж «Завершён» вместо шеврона."""
+    return rx.hstack(
+        rx.vstack(
+            rx.text(title, size="3", weight="bold"),
+            rx.text(subtitle, size="2", color="var(--gray-9)"),
+            rx.cond(
+                completed,
+                rx.box(
+                    rx.text("Завершён", size="1", weight="medium", color=BRAND_ACTION_TEXT),
+                    background=BRAND_PURPLE_TINT,
+                    border_radius="999px",
+                    padding="0.15rem 0.6rem",
+                    margin_top="0.3rem",
+                    width="fit-content",
+                ),
+            ),
+            spacing="0",
+            align="start",
+        ),
+        rx.spacer(),
+        rx.cond(completed, rx.fragment(), rx.icon("chevron-right", size=18, color="var(--gray-9)")),
+        width="100%",
+        align="center",
+        background="white",
+        border_radius="16px",
+        padding="0.9rem 1rem",
+        cursor=rx.cond(completed, "default", "pointer"),
+        on_click=on_click or rx.console_log(""),
+    )
+
+
+def _collections_list_dialog() -> rx.Component:
+    view = FinanceState.collections_list_view
+    active_items = rx.cond(AuthState.is_uk, FinanceState.home_active_collections, FinanceState.my_active_collections)
+    archived_items = rx.cond(
+        AuthState.is_uk, FinanceState.home_archived_collections, FinanceState.my_archived_collections
+    )
+
+    def _row(c, completed: bool):
+        subtitle = rx.cond(
+            c.end_date_fmt != "",
+            "до " + c.end_date_fmt + " · " + c.target_fmt,
+            c.target_fmt,
+        )
+        return _list_row(c.title, subtitle, completed=completed, on_click=FinanceState.open_collection(c.id))
+
+    return rx.cond(
+        view != "",
+        rx.dialog.root(
+            rx.dialog.content(
+                rx.dialog.title("Сборы", style={"display": "none"}),
+                rx.vstack(
+                    rx.hstack(
+                        rx.icon("x", size=16, color="var(--gray-11)"),
+                        rx.text("Закрыть", size="2", weight="medium"),
+                        spacing="1",
+                        align="center",
+                        cursor="pointer",
+                        on_click=FinanceState.close_collections_list,
+                        width="fit-content",
+                        margin_bottom="1rem",
+                    ),
+                    rx.heading("Сборы", size="6", weight="bold", margin_bottom="0.9rem"),
+                    _segmented_tabs(
+                        view,
+                        FinanceState.set_collections_list_tab("active"),
+                        FinanceState.set_collections_list_tab("completed"),
+                    ),
+                    rx.box(height="0.9rem"),
+                    rx.vstack(
+                        rx.cond(
+                            view == "active",
+                            rx.cond(
+                                active_items.length() == 0,
+                                rx.text("Активных сборов нет", size="2", color="var(--gray-9)"),
+                                rx.foreach(active_items, lambda c: _row(c, False)),
+                            ),
+                            rx.cond(
+                                archived_items.length() == 0,
+                                rx.text("Завершённых сборов нет", size="2", color="var(--gray-9)"),
+                                rx.foreach(archived_items, lambda c: _row(c, True)),
+                            ),
+                        ),
+                        width="100%",
+                        spacing="2",
+                        margin_bottom="1rem",
+                    ),
+                    _create_section_pill(),
+                    width="100%",
+                    align="start",
+                ),
+                max_width=MAX_WIDTH,
+                min_height="520px",
+            ),
+            open=view != "",
+            on_open_change=FinanceState.set_collections_list_open,
+        ),
+    )
+
+
+def _initiatives_list_dialog() -> rx.Component:
+    view = CommunityState.initiatives_list_view
+
+    def _row(i, completed: bool):
+        return _list_row(
+            i.title,
+            i.votes.to_string() + " из " + i.needed_count.to_string() + " участников",
+            completed=completed,
+        )
+
+    return rx.cond(
+        view != "",
+        rx.dialog.root(
+            rx.dialog.content(
+                rx.dialog.title("Инициативы", style={"display": "none"}),
+                rx.vstack(
+                    rx.hstack(
+                        rx.icon("x", size=16, color="var(--gray-11)"),
+                        rx.text("Закрыть", size="2", weight="medium"),
+                        spacing="1",
+                        align="center",
+                        cursor="pointer",
+                        on_click=CommunityState.close_initiatives_list,
+                        width="fit-content",
+                        margin_bottom="1rem",
+                    ),
+                    rx.heading("Инициативы", size="6", weight="bold", margin_bottom="0.9rem"),
+                    _segmented_tabs(
+                        view,
+                        CommunityState.set_initiatives_list_tab("active"),
+                        CommunityState.set_initiatives_list_tab("completed"),
+                    ),
+                    rx.box(height="0.9rem"),
+                    rx.vstack(
+                        rx.cond(
+                            view == "active",
+                            rx.cond(
+                                CommunityState.initiatives.length() == 0,
+                                rx.text("Активных инициатив нет", size="2", color="var(--gray-9)"),
+                                rx.foreach(CommunityState.initiatives, lambda i: _row(i, False)),
+                            ),
+                            rx.cond(
+                                CommunityState.completed_initiatives.length() == 0,
+                                rx.text("Завершённых инициатив нет", size="2", color="var(--gray-9)"),
+                                rx.foreach(CommunityState.completed_initiatives, lambda i: _row(i, True)),
+                            ),
+                        ),
+                        width="100%",
+                        spacing="2",
+                        margin_bottom="1rem",
+                    ),
+                    _create_section_pill(),
+                    width="100%",
+                    align="start",
+                ),
+                max_width=MAX_WIDTH,
+                min_height="520px",
+            ),
+            open=view != "",
+            on_open_change=CommunityState.set_initiatives_list_open,
+        ),
+    )
+
+
+def _polls_list_dialog() -> rx.Component:
+    view = CommunityState.polls_list_view
+
+    def _row(p, completed: bool):
+        return _list_row(p.title, p.votes.to_string() + " голосов", completed=completed)
+
+    return rx.cond(
+        view != "",
+        rx.dialog.root(
+            rx.dialog.content(
+                rx.dialog.title("Опросы", style={"display": "none"}),
+                rx.vstack(
+                    rx.hstack(
+                        rx.icon("x", size=16, color="var(--gray-11)"),
+                        rx.text("Закрыть", size="2", weight="medium"),
+                        spacing="1",
+                        align="center",
+                        cursor="pointer",
+                        on_click=CommunityState.close_polls_list,
+                        width="fit-content",
+                        margin_bottom="1rem",
+                    ),
+                    rx.heading("Опросы", size="6", weight="bold", margin_bottom="0.9rem"),
+                    _segmented_tabs(
+                        view,
+                        CommunityState.set_polls_list_tab("active"),
+                        CommunityState.set_polls_list_tab("completed"),
+                    ),
+                    rx.box(height="0.9rem"),
+                    rx.vstack(
+                        rx.cond(
+                            view == "active",
+                            rx.cond(
+                                CommunityState.polls.length() == 0,
+                                rx.text("Активных опросов нет", size="2", color="var(--gray-9)"),
+                                rx.foreach(CommunityState.polls, lambda p: _row(p, False)),
+                            ),
+                            rx.cond(
+                                CommunityState.completed_polls.length() == 0,
+                                rx.text("Завершённых опросов нет", size="2", color="var(--gray-9)"),
+                                rx.foreach(CommunityState.completed_polls, lambda p: _row(p, True)),
+                            ),
+                        ),
+                        width="100%",
+                        spacing="2",
+                        margin_bottom="1rem",
+                    ),
+                    _create_section_pill(),
+                    width="100%",
+                    align="start",
+                ),
+                max_width=MAX_WIDTH,
+                min_height="520px",
+            ),
+            open=view != "",
+            on_open_change=CommunityState.set_polls_list_open,
+        ),
+    )
+
+
 def _invite_footer_buttons() -> rx.Component:
     return rx.vstack(
         rx.button(
@@ -1146,6 +1400,9 @@ def home_tab() -> rx.Component:
     )
     return rx.vstack(
         rx.cond(AuthState.is_uk, _invite_after_create_modal()),
+        _collections_list_dialog(),
+        _initiatives_list_dialog(),
+        _polls_list_dialog(),
         _identity_card(),
         _home_header(),
         rx.cond(

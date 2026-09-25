@@ -33,7 +33,13 @@ class PollItem(BaseModel):
 
 class CommunityState(AuthState):
     initiatives: List[InitiativeItem] = []
+    completed_initiatives: List[InitiativeItem] = []
     polls: List[PollItem] = []
+    completed_polls: List[PollItem] = []
+
+    # L02/L03: списки «Все инициативы»/«Все опросы» — "" скрыт, иначе вкладка.
+    initiatives_list_view: str = ""
+    polls_list_view: str = ""
 
     new_initiative_title: str = ""
     new_initiative_description: str = ""
@@ -56,49 +62,87 @@ class CommunityState(AuthState):
     def load_community(self):
         if not int(self.viewing_entrance_id or 0):
             self.initiatives = []
+            self.completed_initiatives = []
             self.polls = []
+            self.completed_polls = []
             return
         with get_session() as session:
             initiative_rows = session.exec(
                 select(Initiative)
-                .where(Initiative.entrance_id == int(self.viewing_entrance_id), Initiative.is_active == True)  # noqa: E712
+                .where(Initiative.entrance_id == int(self.viewing_entrance_id))
                 .order_by(Initiative.created_at.desc())
             ).all()
             init_items = []
+            completed_init_items = []
             for i in initiative_rows:
                 votes = session.exec(
                     select(InitiativeVote).where(InitiativeVote.initiative_id == i.id)
                 ).all()
-                init_items.append(
-                    InitiativeItem(
-                        id=i.id,
-                        title=i.title,
-                        description=i.description,
-                        votes=len(votes),
-                        needed_count=i.needed_count,
-                        i_voted=any(v.resident_id == int(self.user_id) for v in votes),
-                    )
+                item = InitiativeItem(
+                    id=i.id,
+                    title=i.title,
+                    description=i.description,
+                    votes=len(votes),
+                    needed_count=i.needed_count,
+                    i_voted=any(v.resident_id == int(self.user_id) for v in votes),
                 )
+                (init_items if i.is_active else completed_init_items).append(item)
             self.initiatives = init_items
+            self.completed_initiatives = completed_init_items
 
             poll_rows = session.exec(
                 select(Poll)
-                .where(Poll.entrance_id == int(self.viewing_entrance_id), Poll.is_active == True)  # noqa: E712
+                .where(Poll.entrance_id == int(self.viewing_entrance_id))
                 .order_by(Poll.created_at.desc())
             ).all()
             poll_items = []
+            completed_poll_items = []
             for p in poll_rows:
                 votes = session.exec(select(PollVote).where(PollVote.poll_id == p.id)).all()
-                poll_items.append(
-                    PollItem(
-                        id=p.id,
-                        title=p.title,
-                        description=p.description,
-                        votes=len(votes),
-                        i_voted=any(v.resident_id == int(self.user_id) for v in votes),
-                    )
+                item = PollItem(
+                    id=p.id,
+                    title=p.title,
+                    description=p.description,
+                    votes=len(votes),
+                    i_voted=any(v.resident_id == int(self.user_id) for v in votes),
                 )
+                (poll_items if p.is_active else completed_poll_items).append(item)
             self.polls = poll_items
+            self.completed_polls = completed_poll_items
+
+    @rx.event
+    def open_initiatives_list(self):
+        self.initiatives_list_view = "active"
+
+    @rx.event
+    def close_initiatives_list(self):
+        self.initiatives_list_view = ""
+
+    @rx.event
+    def set_initiatives_list_tab(self, tab: str):
+        self.initiatives_list_view = tab
+
+    @rx.event
+    def set_initiatives_list_open(self, is_open: bool):
+        if not is_open:
+            self.initiatives_list_view = ""
+
+    @rx.event
+    def open_polls_list(self):
+        self.polls_list_view = "active"
+
+    @rx.event
+    def close_polls_list(self):
+        self.polls_list_view = ""
+
+    @rx.event
+    def set_polls_list_tab(self, tab: str):
+        self.polls_list_view = tab
+
+    @rx.event
+    def set_polls_list_open(self, is_open: bool):
+        if not is_open:
+            self.polls_list_view = ""
 
     # ---------------- инициативы ----------------
 
