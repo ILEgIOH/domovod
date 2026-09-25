@@ -11,6 +11,7 @@ from . import shared
 UK_TABS = [
     ("home", "Дом", "house"),
     ("contacts", "Контакты", "users"),
+    ("management", "Управление", "settings"),
 ]
 
 
@@ -18,6 +19,7 @@ def uk_dashboard() -> rx.Component:
     body = rx.match(
         TabState.uk_tab,
         ("contacts", shared.contacts_tab()),
+        ("management", shared.management_tab()),
         shared.home_tab(),
     )
     return phone_shell(

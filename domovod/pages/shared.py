@@ -2854,3 +2854,171 @@ def contacts_tab() -> rx.Component:
         width="100%",
         spacing="3",
     )
+
+
+def _management_header() -> rx.Component:
+    return rx.vstack(
+        rx.heading("Управление", size="6", weight="bold"),
+        rx.cond(
+            UKAdminState.current_entrance,
+            rx.text(
+                UKAdminState.current_entrance.building_address
+                + " · подъезд "
+                + UKAdminState.current_entrance.number.to_string(),
+                size="2",
+                color="var(--gray-9)",
+            ),
+        ),
+        spacing="0",
+        align="start",
+        margin_bottom="1rem",
+        width="100%",
+    )
+
+
+def _management_menu_item(
+    icon: str, title: str, subtitle, on_click=None, badge=None
+) -> rx.Component:
+    """M02: пункт меню управления. Активные пункты (сейчас — только
+    «Предложено жильцами») кликабельны и ведут на свой экран; остальные
+    показаны для полноты картины макета, но помечены «Скоро» — реального
+    экрана под ними пока нет (следующие партии работы)."""
+    return section_card(
+        rx.hstack(
+            rx.icon(icon, size=20, color=BRAND_PURPLE if on_click else "var(--gray-8)"),
+            rx.vstack(
+                rx.text(
+                    title,
+                    size="3",
+                    weight="bold",
+                    color=TEXT_PRIMARY if on_click else "var(--gray-9)",
+                ),
+                rx.text(subtitle, size="2", color="var(--gray-9)"),
+                spacing="0",
+                align="start",
+            ),
+            rx.spacer(),
+            rx.cond(badge, rx.badge(badge, color_scheme="amber")) if badge is not None else rx.fragment(),
+            rx.icon("chevron-right", size=16, color="var(--gray-8)")
+            if on_click
+            else rx.text("Скоро", size="1", color="var(--gray-8)"),
+            width="100%",
+            align="center",
+            spacing="3",
+        ),
+        cursor="pointer" if on_click else "default",
+        on_click=on_click,
+        opacity="1" if on_click else "0.55",
+    )
+
+
+def _management_menu() -> rx.Component:
+    """M02 — список разделов управления домом."""
+    proposals_count = (
+        FinanceState.home_proposed_collections.length()
+        + CommunityState.proposed_initiatives.length()
+        + CommunityState.proposed_polls.length()
+    )
+    return rx.vstack(
+        _management_header(),
+        _management_menu_item(
+            "inbox",
+            "Предложено жильцами",
+            rx.cond(
+                proposals_count > 0,
+                "Ждут решения — посмотрите заявки",
+                "Пока нет новых предложений",
+            ),
+            on_click=UKAdminState.open_management_proposals,
+            badge=proposals_count,
+        ),
+        _management_menu_item("door-open", "Заявки в дом", "Скоро"),
+        _management_menu_item("megaphone", "Объявления", "Вода, свет, лифт и другие события"),
+        _management_menu_item("users", "Жильцы и контакты", "Список жильцов и администраторов"),
+        _management_menu_item("link", "Приглашения", "Код, ссылка и QR"),
+        _management_menu_item("settings", "Настройки дома", "Адрес и управление домом"),
+        width="100%",
+        spacing="2",
+        align="start",
+    )
+
+
+def _proposal_filter_chip(key: str, label: str) -> rx.Component:
+    selected = UKAdminState.proposal_filter == key
+    return rx.box(
+        rx.text(label, size="2", weight="medium", color=rx.cond(selected, BRAND_ACTION_TEXT, "var(--gray-9)")),
+        on_click=UKAdminState.set_proposal_filter(key),
+        cursor="pointer",
+        padding="0.45rem 0.9rem",
+        border_radius="999px",
+        background=rx.cond(selected, BRAND_PURPLE_TINT, "var(--gray-3)"),
+        white_space="nowrap",
+    )
+
+
+def _proposals_screen() -> rx.Component:
+    """M03 — входящие предложения жильцов (сборы/инициативы/опросы) одним
+    списком с фильтром по типу. Карточки — те же, что раньше жили в
+    попапах на главной (публикация/отклонение уже работают), просто
+    теперь у них есть отдельный полноценный экран, как в макете."""
+    show_collections = (UKAdminState.proposal_filter == "all") | (UKAdminState.proposal_filter == "collection")
+    show_initiatives = (UKAdminState.proposal_filter == "all") | (UKAdminState.proposal_filter == "initiative")
+    show_polls = (UKAdminState.proposal_filter == "all") | (UKAdminState.proposal_filter == "poll")
+    total = (
+        FinanceState.home_proposed_collections.length()
+        + CommunityState.proposed_initiatives.length()
+        + CommunityState.proposed_polls.length()
+    )
+    filtered_total = (
+        rx.cond(show_collections, FinanceState.home_proposed_collections.length(), 0)
+        + rx.cond(show_initiatives, CommunityState.proposed_initiatives.length(), 0)
+        + rx.cond(show_polls, CommunityState.proposed_polls.length(), 0)
+    )
+    return rx.vstack(
+        rx.hstack(
+            rx.icon(
+                "chevron-left",
+                size=22,
+                color="var(--gray-11)",
+                cursor="pointer",
+                on_click=UKAdminState.set_management_view("menu"),
+            ),
+            rx.heading("Входящие предложения", size="5", weight="bold"),
+            spacing="2",
+            align="center",
+            margin_bottom="0.25rem",
+        ),
+        rx.text("Заявки от жильцов", size="2", color="var(--gray-9)", margin_bottom="0.75rem"),
+        rx.hstack(
+            _proposal_filter_chip("all", "Все"),
+            _proposal_filter_chip("collection", "Сборы"),
+            _proposal_filter_chip("initiative", "Инициативы"),
+            _proposal_filter_chip("poll", "Опросы"),
+            spacing="2",
+            margin_bottom="1rem",
+            overflow_x="auto",
+        ),
+        rx.cond(
+            filtered_total == 0,
+            rx.text(
+                rx.cond(total == 0, "Пока нет предложений на рассмотрении.", "Нет предложений этого типа."),
+                size="2",
+                color="var(--gray-9)",
+            ),
+            rx.fragment(
+                rx.cond(show_collections, rx.foreach(FinanceState.home_proposed_collections, _proposed_collection_card)),
+                rx.cond(show_initiatives, rx.foreach(CommunityState.proposed_initiatives, _proposed_initiative_card)),
+                rx.cond(show_polls, rx.foreach(CommunityState.proposed_polls, _proposed_poll_card)),
+            ),
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def management_tab() -> rx.Component:
+    return rx.match(
+        UKAdminState.management_view,
+        ("proposals", _proposals_screen()),
+        _management_menu(),
+    )
