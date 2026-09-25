@@ -10,7 +10,7 @@ from ..state import AuthState
 from ..state_community import CommunityState
 from ..state_contacts import ContactsState
 from ..state_finance import FinanceState
-from ..state_news import ICON_CHOICES, NewsState
+from ..state_news import CATEGORY_META, CATEGORY_ORDER, NewsState
 from ..state_proposals import ProposalsState
 from ..state_uk_admin import UKAdminState
 from ..tab_state import TabState
@@ -28,20 +28,10 @@ from ..ui import (
     section_card,
 )
 
-def _icon_bg_color(icon) -> rx.Var:
-    """Цвет плашки объявления по иконке. `icon` — реактивный Var (элемент
-    foreach), поэтому обычный dict.get() тут не работает: ключом становится
-    сам объект Var, а не строка, и всегда попадает в default.
-    """
-    return rx.match(
-        icon,
-        ("zap", "var(--amber-9)"),
-        ("droplet", "var(--blue-9)"),
-        ("wrench", "var(--gray-9)"),
-        ("triangle-alert", "var(--red-9)"),
-        ("megaphone", "var(--violet-9)"),
-        "var(--iris-9)",
-    )
+def _urgency_bg_color(urgency) -> rx.Var:
+    """Цвет плашки объявления в «Доме» (H02): срочные — красные, обычные —
+    фирменный фиолетовый (B01/B03). `urgency` — реактивный Var."""
+    return rx.match(urgency, ("urgent", "var(--red-9)"), "var(--iris-9)")
 
 
 # ==================================================================== Дом ===
@@ -184,17 +174,8 @@ def _home_header() -> rx.Component:
     )
 
 
-def _icon_picker(value, on_change) -> rx.Component:
-    return rx.select.root(
-        rx.select.trigger(width="100%"),
-        rx.select.content(rx.foreach(ICON_CHOICES, lambda i: rx.select.item(i, value=i))),
-        value=value,
-        on_change=on_change,
-        width="100%",
-    )
-
-
 def _announcement_pill(n) -> rx.Component:
+    """H02 — компактная плашка объявления на главном экране «Дом»."""
     return rx.box(
         rx.cond(
             AuthState.is_uk,
@@ -217,8 +198,13 @@ def _announcement_pill(n) -> rx.Component:
             spacing="2",
             align="center",
         ),
-        rx.text(n.body, size="1", color="rgba(255,255,255,0.8)", margin_top="0.15rem"),
-        background=_icon_bg_color(n.icon),
+        rx.text(
+            rx.cond(n.period_text != "", n.period_text, n.body),
+            size="1",
+            color="rgba(255,255,255,0.8)",
+            margin_top="0.15rem",
+        ),
+        background=_urgency_bg_color(n.urgency),
         border_radius="14px",
         padding="0.6rem 0.9rem",
         white_space="nowrap",
@@ -243,34 +229,89 @@ def _announcements_row() -> rx.Component:
     )
 
 
-def _announcement_form() -> rx.Component:
+def _category_picker(value: rx.Var, on_change) -> rx.Component:
+    """B02 — выбор типа объявления: Вода / Свет / Лифт / Общее."""
+
+    def _btn(key: str) -> rx.Component:
+        label, icon = CATEGORY_META[key]
+        selected = value == key
+        return rx.vstack(
+            rx.icon(icon, size=20, color=rx.cond(selected, BRAND_ACTION_TEXT, "var(--gray-9)")),
+            rx.text(label, size="1", weight="medium", color=rx.cond(selected, BRAND_ACTION_TEXT, "var(--gray-9)")),
+            on_click=on_change(key),
+            cursor="pointer",
+            flex="1",
+            align="center",
+            spacing="1",
+            padding="0.6rem 0.3rem",
+            border_radius="14px",
+            background=rx.cond(selected, BRAND_PURPLE_TINT, "var(--gray-3)"),
+        )
+
+    return rx.hstack(*[_btn(key) for key in CATEGORY_ORDER], spacing="2", width="100%", margin_bottom="0.6rem")
+
+
+def _announcement_fields() -> rx.Component:
+    """B02+B03, объединённые в один экран (как и другие формы создания
+    у администратора в этом проекте)."""
     return rx.vstack(
         error_text(NewsState.news_error),
-        field_label("Заголовок"),
+        field_label("Тип"),
+        _category_picker(NewsState.new_category, NewsState.set_new_category),
+        field_label("Короткий заголовок"),
         rx.input(
             value=NewsState.new_title,
             on_change=NewsState.set_new_title,
-            placeholder="Отключение света",
+            placeholder="Отключение воды",
             width="100%",
+            margin_bottom="0.6rem",
         ),
-        field_label("Детали"),
+        field_label("Когда"),
         rx.input(
+            value=NewsState.new_period,
+            on_change=NewsState.set_new_period,
+            placeholder="26 сентября · 10:00–18:00",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Описание"),
+        rx.text_area(
             value=NewsState.new_body,
             on_change=NewsState.set_new_body,
-            placeholder="6 сен. с 10 до 18",
+            placeholder="Обновим стены и двери лифта.",
             width="100%",
+            rows="3",
+            margin_bottom="0.6rem",
         ),
-        field_label("Иконка"),
-        _icon_picker(NewsState.new_icon, NewsState.set_new_icon),
+        field_label("Важность"),
+        _mode_toggle(
+            NewsState.new_urgency,
+            "normal", "Обычная",
+            "urgent", "Срочная",
+            NewsState.set_new_urgency,
+        ),
         rx.button(
-            rx.icon("plus", size=15),
-            "Добавить объявление",
+            rx.cond(NewsState.editor_id != 0, "Сохранить", "Опубликовать"),
             width="100%",
-            margin_top="0.4rem",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
             on_click=NewsState.create_news,
         ),
+        rx.cond(
+            NewsState.editor_id != 0,
+            rx.button(
+                "Удалить публикацию",
+                width="100%",
+                size="3",
+                radius="full",
+                variant="soft",
+                color_scheme="red",
+                margin_top="0.5rem",
+                on_click=NewsState.ask_delete_news(NewsState.editor_id),
+            ),
+        ),
         width="100%",
-        spacing="2",
         align="start",
     )
 
@@ -1321,7 +1362,7 @@ def _debts_block() -> rx.Component:
     )
 
 
-def _admin_create_row(icon: str, title: str, subtitle: str, kind: str) -> rx.Component:
+def _admin_create_row(icon: str, title: str, subtitle: str, kind: str, extra_click=None) -> rx.Component:
     return rx.hstack(
         rx.icon(icon, size=20, color=BRAND_ACTION_TEXT),
         rx.vstack(
@@ -1339,7 +1380,7 @@ def _admin_create_row(icon: str, title: str, subtitle: str, kind: str) -> rx.Com
         border_radius="16px",
         padding="0.9rem 1rem",
         cursor="pointer",
-        on_click=AuthState.set_admin_create_kind(kind),
+        on_click=[AuthState.set_admin_create_kind(kind)] + (extra_click or []),
     )
 
 
@@ -1358,7 +1399,10 @@ def _admin_create_picker() -> rx.Component:
         _admin_create_row("wallet", "Сбор", "Опубликовать от своего имени", "collection"),
         _admin_create_row("users", "Инициативу", "Собрать соседей", "initiative"),
         _admin_create_row("bar-chart-2", "Опрос", "Узнать мнение", "poll"),
-        _admin_create_row("megaphone", "Объявление", "Важное событие дома", "announcement"),
+        _admin_create_row(
+            "megaphone", "Объявление", "Важное событие дома", "announcement",
+            extra_click=[NewsState.reset_editor],
+        ),
         _admin_create_row("receipt", "Начисление", "Выставить долг жителю", "debt"),
         width="100%",
         spacing="2",
@@ -1588,34 +1632,7 @@ def _admin_poll_form() -> rx.Component:
 def _admin_announcement_form() -> rx.Component:
     return rx.vstack(
         _admin_form_header("Новое объявление"),
-        error_text(NewsState.news_error),
-        field_label("Заголовок"),
-        rx.input(
-            value=NewsState.new_title,
-            on_change=NewsState.set_new_title,
-            placeholder="Отключение света",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Детали"),
-        rx.input(
-            value=NewsState.new_body,
-            on_change=NewsState.set_new_body,
-            placeholder="6 сен. с 10 до 18",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Иконка"),
-        _icon_picker(NewsState.new_icon, NewsState.set_new_icon),
-        rx.button(
-            "Опубликовать",
-            width="100%",
-            size="3",
-            radius="full",
-            margin_top="0.6rem",
-            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
-            on_click=NewsState.create_news,
-        ),
+        _announcement_fields(),
         width="100%",
         align="start",
     )
@@ -3325,7 +3342,15 @@ def _management_menu() -> rx.Component:
                 AuthState.set_management_view("residents"),
             ],
         ),
-        _management_menu_item("megaphone", "Объявления", "Вода, свет, лифт и другие события"),
+        _management_menu_item(
+            "megaphone",
+            "Объявления",
+            "Вода, свет, лифт и другие события",
+            on_click=[
+                NewsState.set_announcements_view("list"),
+                AuthState.set_management_view("announcements"),
+            ],
+        ),
         _management_menu_item(
             "users",
             "Жильцы и контакты",
@@ -4391,6 +4416,125 @@ def _residents_hub() -> rx.Component:
     )
 
 
+def _announcements_hub_header(title: str) -> rx.Component:
+    return rx.hstack(
+        rx.icon(
+            "chevron-left",
+            size=22,
+            color="var(--gray-11)",
+            cursor="pointer",
+            on_click=NewsState.set_announcements_view("list"),
+        ),
+        rx.heading(title, size="5", weight="bold"),
+        spacing="2",
+        align="center",
+        margin_bottom="0.75rem",
+    )
+
+
+def _announcement_list_row(n) -> rx.Component:
+    """B01 — строка списка; открывает совмещённый B02/B03 на правку."""
+    return section_card(
+        rx.hstack(
+            rx.icon(
+                n.icon, size=18,
+                color=rx.cond(n.urgency == "urgent", "var(--red-9)", BRAND_PURPLE),
+            ),
+            rx.vstack(
+                rx.text(n.title, weight="bold", size="3"),
+                rx.text(
+                    rx.cond(n.period_text != "", n.period_text, n.body),
+                    size="2", color="var(--gray-9)",
+                ),
+                spacing="0",
+                align="start",
+            ),
+            rx.spacer(),
+            rx.cond(
+                n.urgency == "urgent",
+                rx.badge("Срочно", color_scheme="red"),
+            ),
+            rx.icon("chevron-right", size=16, color="var(--gray-8)"),
+            width="100%",
+            align="center",
+            spacing="3",
+        ),
+        cursor="pointer",
+        on_click=NewsState.open_editor(n.id),
+    )
+
+
+def _announcements_list_screen() -> rx.Component:
+    """B01 — «Важное в доме»: список опубликованных объявлений."""
+    return rx.vstack(
+        _announcements_hub_header("Объявления"),
+        rx.cond(
+            NewsState.news_items.length() == 0,
+            rx.text("Пока нет объявлений", size="2", color="var(--gray-9)", margin_bottom="0.75rem"),
+            rx.foreach(NewsState.news_items, _announcement_list_row),
+        ),
+        rx.box(
+            rx.text("+ Объявление", weight="bold", text_align="center", color=BRAND_ACTION_TEXT, size="2"),
+            width="100%",
+            background=BRAND_PURPLE_TINT,
+            border_radius="999px",
+            padding="0.7rem",
+            cursor="pointer",
+            on_click=[NewsState.reset_editor, NewsState.set_announcements_view("editor")],
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _announcement_editor_screen() -> rx.Component:
+    """B02/B03 из хаба «Объявления» (в отличие от M06 — с заголовком-хабом,
+    ведущим назад в список, а не закрывающим весь sheet)."""
+    return rx.vstack(
+        _announcements_hub_header(rx.cond(NewsState.editor_id != 0, "Объявление", "Новое объявление")),
+        _announcement_fields(),
+        width="100%",
+        align="start",
+    )
+
+
+def _confirm_delete_news_dialog() -> rx.Component:
+    """M10 — подтверждение удаления публикации."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Удалить публикацию?"),
+            rx.text(
+                "Она исчезнет из дома. Отменить это действие после удаления нельзя.",
+                size="2",
+                color="var(--gray-10)",
+                margin_bottom="1rem",
+            ),
+            rx.hstack(
+                rx.button("Отмена", variant="soft", flex="1", on_click=NewsState.cancel_delete_news),
+                rx.button(
+                    "Удалить", color_scheme="red", flex="1",
+                    on_click=NewsState.confirm_delete_news,
+                ),
+                width="100%",
+            ),
+            max_width="360px",
+        ),
+        open=NewsState.confirm_delete_id != 0,
+        on_open_change=NewsState.cancel_delete_news,
+    )
+
+
+def _announcements_hub() -> rx.Component:
+    return rx.fragment(
+        _confirm_delete_news_dialog(),
+        rx.match(
+            NewsState.announcements_view,
+            ("editor", _announcement_editor_screen()),
+            _announcements_list_screen(),
+        ),
+    )
+
+
 def management_tab() -> rx.Component:
     return rx.fragment(
         rx.cond(AuthState.is_uk, _reject_reason_dialog()),
@@ -4406,6 +4550,7 @@ def management_tab() -> rx.Component:
             )),
             ("settings", _settings_screen()),
             ("residents", _residents_hub()),
+            ("announcements", _announcements_hub()),
             _management_menu(),
         ),
     )
