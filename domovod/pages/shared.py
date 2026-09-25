@@ -64,23 +64,29 @@ def _avatar() -> rx.Component:
 def _identity_card() -> rx.Component:
     return section_card(
         rx.hstack(
-            _avatar(),
-            rx.vstack(
-                rx.hstack(
-                    rx.heading(AuthState.display_name, size="4"),
-                    rx.cond(
-                        AuthState.is_uk,
-                        rx.badge("Админ", color_scheme="iris"),
+            rx.hstack(
+                _avatar(),
+                rx.vstack(
+                    rx.hstack(
+                        rx.heading(AuthState.display_name, size="4"),
+                        rx.cond(
+                            AuthState.is_uk,
+                            rx.badge("Админ", color_scheme="iris"),
+                        ),
+                        spacing="2",
+                        align="center",
                     ),
-                    spacing="2",
-                    align="center",
+                    rx.cond(
+                        AuthState.is_resident,
+                        rx.text(f"Квартира {AuthState.apartment}", size="2", color="var(--gray-9)"),
+                    ),
+                    spacing="0",
+                    align="start",
                 ),
-                rx.cond(
-                    AuthState.is_resident,
-                    rx.text(f"Квартира {AuthState.apartment}", size="2", color="var(--gray-9)"),
-                ),
-                spacing="0",
-                align="start",
+                spacing="3",
+                align="center",
+                cursor=rx.cond(AuthState.is_resident, "pointer", "default"),
+                on_click=AuthState.open_profile_sheet,
             ),
             rx.spacer(),
             rx.cond(
@@ -2796,6 +2802,101 @@ def _my_proposals_dialog() -> rx.Component:
     )
 
 
+def _profile_edit_name() -> rx.Component:
+    """P02 — смена имени; фамилию (необязательное поле в макете) не
+    заводим отдельно — у нас имя жителя одно строковое поле."""
+    return rx.vstack(
+        rx.hstack(
+            rx.icon(
+                "chevron-left",
+                size=20,
+                color="var(--gray-11)",
+                cursor="pointer",
+                on_click=AuthState.set_profile_view("menu"),
+            ),
+            rx.heading("Ваше имя", size="5", weight="bold"),
+            spacing="2",
+            align="center",
+            margin_bottom="0.25rem",
+        ),
+        rx.text(AuthState.home_label, size="2", color="var(--gray-9)", margin_bottom="0.75rem"),
+        error_text(AuthState.profile_error),
+        field_label("Имя"),
+        rx.input(
+            value=AuthState.edit_name_input,
+            on_change=AuthState.set_edit_name_input,
+            on_key_down=AuthState.edit_name_key_down,
+            width="100%",
+            margin_bottom="0.6rem",
+            auto_focus=True,
+        ),
+        rx.text(
+            "Так ваше имя будет видно соседям в контактах и ваших предложениях.",
+            size="2",
+            color="var(--gray-9)",
+            margin_bottom="1rem",
+        ),
+        rx.button(
+            "Сохранить",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=AuthState.save_profile_name,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _profile_menu() -> rx.Component:
+    """P01 — «Ваш дом и профиль», открывается тапом на карточку личности."""
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Ваш дом и профиль", size="5", weight="bold"),
+            rx.spacer(),
+            rx.dialog.close(rx.icon("x", size=18, color="var(--gray-9)", cursor="pointer")),
+            width="100%",
+            align="center",
+            margin_bottom="0.75rem",
+        ),
+        _settings_menu_item(
+            "user",
+            AuthState.display_name + " · квартира " + AuthState.apartment,
+            "Изменить имя",
+            on_click=AuthState.open_edit_name,
+        ),
+        _settings_menu_item(
+            "clipboard-list",
+            "Мои предложения",
+            "Статус ваших заявок",
+            on_click=[AuthState.close_profile_sheet, ProposalsState.open_my_proposals],
+        ),
+        _settings_menu_item("file-text", "Черновики", "Скоро"),
+        _settings_menu_item("repeat", "Переключить дом", "Скоро"),
+        _settings_menu_item("shield", "Приватность", "Скоро"),
+        _settings_menu_item("log-out", "Выйти из дома", "Скоро"),
+        width="100%",
+        align="start",
+    )
+
+
+def _profile_sheet() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Ваш дом и профиль", style={"display": "none"}),
+            rx.match(
+                AuthState.profile_view,
+                ("edit_name", _profile_edit_name()),
+                _profile_menu(),
+            ),
+            max_width=MAX_WIDTH,
+        ),
+        open=AuthState.show_profile_sheet,
+        on_open_change=AuthState.set_profile_sheet_open,
+    )
+
+
 def home_tab() -> rx.Component:
     collections_count = rx.cond(
         AuthState.is_uk,
@@ -2836,6 +2937,7 @@ def home_tab() -> rx.Component:
         rx.cond(AuthState.is_resident, _create_type_picker()),
         rx.cond(AuthState.is_resident, _create_flow_dialog()),
         rx.cond(AuthState.is_resident, _my_proposals_dialog()),
+        rx.cond(AuthState.is_resident, _profile_sheet()),
         rx.cond(AuthState.is_uk, _reject_reason_dialog()),
         _identity_card(),
         _home_header(),

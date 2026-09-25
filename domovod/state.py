@@ -83,6 +83,13 @@ class AuthState(rx.State):
     # модерации). "" — показывает выбор типа; иначе конкретная форма.
     admin_create_kind: str = ""
 
+    # --- P01/P02: «Ваш дом и профиль» (только у жителя) — меню профиля,
+    # открывается по тапу на карточку личности вместо мгновенного выхода.
+    show_profile_sheet: bool = False
+    profile_view: str = "menu"  # "menu" | "edit_name"
+    edit_name_input: str = ""
+    profile_error: str = ""
+
     # --- мастер предложения (F01–F13): резидент предлагает сбор/
     # инициативу/опрос на модерацию УК. Шаг живёт тут, сами поля формы —
     # в new_col_*/new_initiative_*/new_poll_* (FinanceState/CommunityState).
@@ -120,6 +127,53 @@ class AuthState(rx.State):
     set_proposal_filter = make_setter("proposal_filter")
     set_review_kind = make_setter("review_kind")
     set_admin_create_kind = make_setter("admin_create_kind")
+    set_profile_view = make_setter("profile_view")
+
+    @rx.event
+    def open_profile_sheet(self):
+        if not self.is_resident:
+            return
+        self.show_profile_sheet = True
+        self.profile_view = "menu"
+
+    @rx.event
+    def close_profile_sheet(self):
+        self.show_profile_sheet = False
+
+    @rx.event
+    def set_profile_sheet_open(self, is_open: bool):
+        self.show_profile_sheet = is_open
+
+    @rx.event
+    def open_edit_name(self):
+        self.edit_name_input = self.display_name
+        self.profile_error = ""
+        self.profile_view = "edit_name"
+
+    @rx.event
+    def set_edit_name_input(self, value: str):
+        """Как и «Ваше имя» на экране приглашения — только буквы и пробелы."""
+        self.edit_name_input = "".join(ch for ch in value if ch.isalpha() or ch == " ")
+
+    @rx.event
+    def edit_name_key_down(self, key: str, info: KeyInputInfo):
+        if len(key) == 1 and not (key.isalpha() or key == " "):
+            return rx.prevent_default
+
+    @rx.event
+    def save_profile_name(self):
+        name = self.edit_name_input.strip()
+        if not name:
+            self.profile_error = "Введите имя"
+            return
+        with get_session() as session:
+            resident = session.get(Resident, int(self.user_id))
+            if resident:
+                resident.full_name = name
+                session.add(resident)
+                session.commit()
+        self.display_name = name
+        self.profile_view = "menu"
 
     @rx.event
     def open_management_proposals(self):
