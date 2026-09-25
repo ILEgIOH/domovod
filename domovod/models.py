@@ -144,6 +144,7 @@ class Initiative(SQLModel, table=True):
     description: str = ""
     needed_count: int = 0
     author_name: str = ""
+    event_date: str = ""
     is_active: bool = True
     created_at: datetime = Field(default_factory=now_utc)
 

@@ -14,6 +14,7 @@ from ..state_news import ICON_CHOICES, NewsState
 from ..state_uk_admin import UKAdminState
 from ..ui import (
     BRAND_ACTION_TEXT,
+    BRAND_NEON,
     BRAND_PURPLE,
     BRAND_PURPLE_TINT,
     CARD_BG,
@@ -648,10 +649,17 @@ def _initiative_form() -> rx.Component:
             width="100%",
             rows="2",
         ),
-        rx.input(
-            placeholder="Нужно человек",
-            value=CommunityState.new_initiative_needed,
-            on_change=CommunityState.set_new_initiative_needed,
+        rx.hstack(
+            rx.input(
+                placeholder="Нужно человек",
+                value=CommunityState.new_initiative_needed,
+                on_change=CommunityState.set_new_initiative_needed,
+            ),
+            rx.input(
+                placeholder="Дата, напр. 3 октября · 10:00",
+                value=CommunityState.new_initiative_event_date,
+                on_change=CommunityState.set_new_initiative_event_date,
+            ),
             width="100%",
         ),
         rx.button(
@@ -663,6 +671,77 @@ def _initiative_form() -> rx.Component:
         width="100%",
         spacing="2",
         align="start",
+    )
+
+
+def _initiative_detail_dialog() -> rx.Component:
+    """I01: карточка инициативы — дата, «N из M участвуют», описание и
+    кнопка «Я участвую» (Neon, как в макете)."""
+    i = CommunityState.open_initiative_item
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Инициатива", style={"display": "none"}),
+            rx.cond(
+                i,
+                rx.vstack(
+                    rx.hstack(
+                        rx.icon("x", size=16, color="var(--gray-11)"),
+                        rx.text("Закрыть", size="2", weight="medium"),
+                        spacing="1",
+                        align="center",
+                        cursor="pointer",
+                        on_click=CommunityState.close_initiative,
+                        width="fit-content",
+                        margin_bottom="1rem",
+                    ),
+                    rx.heading(i.title, size="6", weight="bold", margin_bottom="0.1rem"),
+                    rx.cond(
+                        i.author_name != "",
+                        rx.text("Идея " + i.author_name, size="2", color="var(--gray-9)", margin_bottom="0.6rem"),
+                    ),
+                    rx.cond(
+                        i.event_date != "",
+                        rx.box(
+                            rx.text(i.event_date, size="1", weight="medium", color=BRAND_ACTION_TEXT),
+                            background=BRAND_PURPLE_TINT,
+                            border_radius="999px",
+                            padding="0.2rem 0.7rem",
+                            width="fit-content",
+                            margin_bottom="1rem",
+                        ),
+                    ),
+                    rx.box(
+                        rx.text(i.votes.to_string() + " из " + i.needed_count.to_string(), size="7", weight="bold"),
+                        rx.text("соседей участвуют", size="2", color="var(--gray-9)", margin_bottom="0.6rem"),
+                        progress_bar(i.progress_pct),
+                        width="100%",
+                        background="white",
+                        border="1px solid var(--gray-4)",
+                        border_radius="16px",
+                        padding="1rem",
+                        margin_bottom="1rem",
+                    ),
+                    rx.cond(i.description != "", rx.text(i.description, size="2", color="var(--gray-11)", margin_bottom="1.2rem")),
+                    rx.cond(
+                        AuthState.is_resident,
+                        rx.button(
+                            rx.cond(i.i_voted, "Я не участвую", "Я участвую"),
+                            width="100%",
+                            size="3",
+                            radius="full",
+                            style={"background": BRAND_NEON, "color": BRAND_ACTION_TEXT},
+                            on_click=CommunityState.toggle_initiative_vote(i.id),
+                        ),
+                    ),
+                    width="100%",
+                    align="start",
+                ),
+            ),
+            max_width=MAX_WIDTH,
+            min_height="480px",
+        ),
+        open=CommunityState.open_initiative_id != 0,
+        on_open_change=CommunityState.set_initiative_dialog_open,
     )
 
 
@@ -1147,6 +1226,7 @@ def _initiatives_list_dialog() -> rx.Component:
             i.title,
             i.votes.to_string() + " из " + i.needed_count.to_string() + " участников",
             completed=completed,
+            on_click=CommunityState.open_initiative(i.id),
         )
 
     return rx.cond(
@@ -1445,6 +1525,7 @@ def home_tab() -> rx.Component:
         rx.cond(AuthState.is_uk, _invite_after_create_modal()),
         _collections_list_dialog(),
         _initiatives_list_dialog(),
+        _initiative_detail_dialog(),
         _polls_list_dialog(),
         _identity_card(),
         _home_header(),
