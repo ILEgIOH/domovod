@@ -11,7 +11,7 @@ from sqlmodel import select
 from .db import get_session
 from .max_stub import STUB_DISPLAY_NAME, generate_device_id
 from .models import Building, Entrance, Resident, Tenant
-from .security import hash_password, verify_password
+from .security import hash_password
 from .setters import make_setter
 
 # --- фиксированный демо-стенд для проверки в один клик, без ввода данных ---
@@ -51,17 +51,6 @@ class AuthState(rx.State):
     # Заглушка "идентификации через MAX" — стабильный id на браузер/устройство,
     # пока не подключён настоящий MAX Bridge.
     max_device_id: str = rx.LocalStorage("")
-
-    # --- поля форм входа/регистрации ---
-    login_email: str = ""
-    login_password: str = ""
-    login_error: str = ""
-
-    reg_company_name: str = ""
-    reg_email: str = ""
-    reg_password: str = ""
-    reg_phone: str = ""
-    reg_error: str = ""
 
     res_invite_code: str = ""
     res_full_name: str = ""
@@ -103,12 +92,6 @@ class AuthState(rx.State):
 
     set_auth_view = make_setter("auth_view")
     set_res_household_size = make_setter("res_household_size")
-    set_login_email = make_setter("login_email")
-    set_login_password = make_setter("login_password")
-    set_reg_company_name = make_setter("reg_company_name")
-    set_reg_email = make_setter("reg_email")
-    set_reg_password = make_setter("reg_password")
-    set_reg_phone = make_setter("reg_phone")
 
     @rx.var
     def create_home_ready(self) -> bool:
@@ -172,61 +155,6 @@ class AuthState(rx.State):
     def require_resident(self):
         if self.is_hydrated and not self.is_resident:
             return rx.redirect("/")
-
-    # ---------------- УК: вход/регистрация ----------------
-
-    @rx.event
-    def uk_login(self):
-        self.login_error = ""
-        email = self.login_email.strip().lower()
-        if not email or not self.login_password:
-            self.login_error = "Введите email и пароль"
-            return
-        with get_session() as session:
-            tenant = session.exec(select(Tenant).where(Tenant.email == email)).first()
-        if not tenant or not verify_password(self.login_password, tenant.password_hash):
-            self.login_error = "Неверный email или пароль"
-            return
-        self.role = "uk"
-        self.user_id = tenant.id
-        self.tenant_id = tenant.id
-        self.display_name = tenant.name
-        self.login_password = ""
-        return rx.redirect("/uk")
-
-    @rx.event
-    def uk_register(self):
-        self.reg_error = ""
-        name = self.reg_company_name.strip()
-        email = self.reg_email.strip().lower()
-        if not name or not email:
-            self.reg_error = "Укажите название компании и email"
-            return
-        if len(self.reg_password) < 4:
-            self.reg_error = "Пароль должен быть не короче 4 символов"
-            return
-        with get_session() as session:
-            existing = session.exec(select(Tenant).where(Tenant.email == email)).first()
-            if existing:
-                self.reg_error = "Компания с таким email уже зарегистрирована"
-                return
-            tenant = Tenant(
-                name=name,
-                email=email,
-                password_hash=hash_password(self.reg_password),
-                phone=self.reg_phone.strip(),
-            )
-            session.add(tenant)
-            session.commit()
-            session.refresh(tenant)
-            tenant_id = tenant.id
-            tenant_name = tenant.name
-        self.role = "uk"
-        self.user_id = tenant_id
-        self.tenant_id = tenant_id
-        self.display_name = tenant_name
-        self.reg_password = ""
-        return rx.redirect("/uk")
 
     # ---------------- Житель: экран «Введите код» ----------------
 

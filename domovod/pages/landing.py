@@ -108,96 +108,6 @@ def _back_link() -> rx.Component:
     )
 
 
-def _uk_login_view() -> rx.Component:
-    return rx.vstack(
-        _back_link(),
-        rx.heading("Вход для УК", size="5", margin_bottom="0.75rem"),
-        error_text(AuthState.login_error),
-        field_label("Email"),
-        rx.input(
-            value=AuthState.login_email,
-            on_change=AuthState.set_login_email,
-            placeholder="company@example.com",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Пароль"),
-        rx.input(
-            value=AuthState.login_password,
-            on_change=AuthState.set_login_password,
-            type="password",
-            placeholder="••••••",
-            width="100%",
-            margin_bottom="1rem",
-        ),
-        rx.button("Войти", width="100%", on_click=AuthState.uk_login),
-        rx.center(
-            rx.button(
-                "Нет аккаунта? Зарегистрировать УК",
-                variant="ghost",
-                size="2",
-                on_click=AuthState.set_auth_view("uk_register"),
-            ),
-            width="100%",
-            padding_top="0.75rem",
-        ),
-        width="100%",
-    )
-
-
-def _uk_register_view() -> rx.Component:
-    return rx.vstack(
-        _back_link(),
-        rx.heading("Регистрация УК", size="5", margin_bottom="0.75rem"),
-        error_text(AuthState.reg_error),
-        field_label("Название компании"),
-        rx.input(
-            value=AuthState.reg_company_name,
-            on_change=AuthState.set_reg_company_name,
-            placeholder="ООО «УК Уютный дом»",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Email"),
-        rx.input(
-            value=AuthState.reg_email,
-            on_change=AuthState.set_reg_email,
-            placeholder="company@example.com",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Телефон (необязательно)"),
-        rx.input(
-            value=AuthState.reg_phone,
-            on_change=AuthState.set_reg_phone,
-            placeholder="+7 900 000-00-00",
-            width="100%",
-            margin_bottom="0.6rem",
-        ),
-        field_label("Пароль"),
-        rx.input(
-            value=AuthState.reg_password,
-            on_change=AuthState.set_reg_password,
-            type="password",
-            placeholder="от 4 символов",
-            width="100%",
-            margin_bottom="1rem",
-        ),
-        rx.button("Зарегистрировать компанию", width="100%", on_click=AuthState.uk_register),
-        rx.center(
-            rx.button(
-                "Уже зарегистрированы? Войти",
-                variant="ghost",
-                size="2",
-                on_click=AuthState.set_auth_view("uk_login"),
-            ),
-            width="100%",
-            padding_top="0.75rem",
-        ),
-        width="100%",
-    )
-
-
 def _code_box(index: int, value, placeholder: str) -> rx.Component:
     # Фокус НЕ вешаем через статичный auto_focus (HTML-атрибут) — он бы
     # срабатывал при каждой перерисовке и мог перетягивать фокус обратно
@@ -412,8 +322,6 @@ def landing() -> rx.Component:
         rx.box(
             rx.match(
                 AuthState.auth_view,
-                ("uk_login", _uk_login_view()),
-                ("uk_register", _uk_register_view()),
                 ("join_code", _join_code_view()),
                 ("create_home", _create_home_view()),
                 _splash_view(),
