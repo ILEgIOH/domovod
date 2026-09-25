@@ -18,6 +18,7 @@ from ..ui import (
     BRAND_PURPLE_TINT,
     CARD_BG,
     MAX_WIDTH,
+    TEXT_PRIMARY,
     error_text,
     field_label,
     progress_bar,
@@ -300,57 +301,89 @@ def _proposed_collection_card(c) -> rx.Component:
 
 
 def _published_collection_card(c) -> rx.Component:
-    return section_card(
-        rx.text(c.title, weight="bold", size="3"),
-        rx.cond(c.description != "", rx.text(c.description, size="2", color="var(--gray-11)", margin_top="0.2rem")),
+    """C01/C02/C05: карточка сбора — статус, крупная сумма, прогресс,
+    описание и действие. В нашем продукте оплата настоящая (ЮKassa), в
+    отличие от спеки, где это просто отметка намерения — см. решение
+    пользователя оставить реальные платежи; поэтому шаг «Как передать
+    деньги» (C03) и отмена отметки (C04) здесь не нужны."""
+    return rx.vstack(
+        rx.heading(c.title, size="6", weight="bold", margin_bottom="0.1rem"),
+        rx.cond(
+            c.proposed_by_name != "",
+            rx.text(c.proposed_by_name + " · инициатор", size="2", color="var(--gray-9)", margin_bottom="0.6rem"),
+        ),
+        rx.box(
+            rx.text(
+                rx.cond(c.is_active, "Активный сбор", "Сбор завершён"),
+                size="1",
+                weight="medium",
+                color=BRAND_ACTION_TEXT,
+            ),
+            background=BRAND_PURPLE_TINT,
+            border_radius="999px",
+            padding="0.2rem 0.7rem",
+            width="fit-content",
+            margin_bottom="1rem",
+        ),
+        rx.text(c.target_fmt, size="8", weight="bold", color=TEXT_PRIMARY),
+        rx.cond(
+            c.end_date_fmt != "",
+            rx.text("до " + c.end_date_fmt, size="2", color="var(--gray-9)", margin_bottom="0.9rem"),
+        ),
         progress_bar(c.progress_pct),
         rx.hstack(
-            rx.text(c.collected_fmt, size="2", weight="bold"),
-            rx.text("из " + c.target_fmt, size="2", color="var(--gray-9)"),
-            justify="between",
-            width="100%",
-            margin_top="0.3rem",
+            rx.text(c.collected_fmt + " из " + c.target_fmt, size="2", weight="bold"),
+            rx.text("собрано", size="2", color="var(--gray-9)"),
+            spacing="1",
+            margin_top="0.4rem",
+            margin_bottom="1rem",
         ),
+        rx.cond(c.description != "", rx.text(c.description, size="2", color="var(--gray-11)", margin_bottom="1.2rem")),
         rx.cond(
             AuthState.is_uk,
             rx.button(
                 rx.cond(c.is_active, "Остановить сбор", "Возобновить сбор"),
-                size="1",
-                variant="soft",
                 width="100%",
-                margin_top="0.5rem",
+                size="3",
+                radius="full",
+                variant="soft",
                 on_click=FinanceState.toggle_collection_active(c.id),
             ),
         ),
         rx.cond(
             AuthState.is_resident,
-            rx.fragment(
+            rx.vstack(
                 rx.cond(
                     c.my_contribution > 0,
                     rx.text(
                         "Ваш взнос: " + c.my_contribution_fmt,
-                        size="1",
-                        color="var(--accent-9)",
-                        margin_top="0.2rem",
+                        size="2",
+                        color=BRAND_ACTION_TEXT,
                     ),
                 ),
                 rx.cond(
                     c.my_payment_pending,
-                    rx.badge("Платёж обрабатывается...", color_scheme="amber", margin_top="0.4rem"),
+                    rx.badge("Платёж обрабатывается...", color_scheme="amber"),
                     rx.cond(
                         c.remaining > 0,
                         rx.button(
-                            rx.icon("credit-card", size=15),
+                            rx.icon("credit-card", size=16),
                             "Внести " + c.remaining_fmt,
                             width="100%",
-                            margin_top="0.5rem",
+                            size="3",
+                            radius="full",
+                            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
                             on_click=FinanceState.pay_collection(c.id, c.remaining),
                         ),
-                        rx.badge("Сбор закрыт", color_scheme="green", margin_top="0.4rem"),
+                        rx.badge("Сбор закрыт", color_scheme="green"),
                     ),
                 ),
+                width="100%",
+                spacing="2",
             ),
         ),
+        width="100%",
+        align="start",
     )
 
 
@@ -415,21 +448,31 @@ def _collection_form() -> rx.Component:
 
 
 def _collection_detail_dialog() -> rx.Component:
+    """C01/C02/C05 из макета — модалка с шапкой «X Закрыть», как у
+    остальных вторичных экранов (A03, H02...)."""
     return rx.dialog.root(
         rx.dialog.content(
             rx.dialog.title("Сбор", style={"display": "none"}),
             rx.cond(
                 FinanceState.open_collection_item,
-                _published_collection_card(FinanceState.open_collection_item),
+                rx.vstack(
+                    rx.hstack(
+                        rx.icon("x", size=16, color="var(--gray-11)"),
+                        rx.text("Закрыть", size="2", weight="medium"),
+                        spacing="1",
+                        align="center",
+                        cursor="pointer",
+                        on_click=FinanceState.close_collection,
+                        width="fit-content",
+                        margin_bottom="1rem",
+                    ),
+                    _published_collection_card(FinanceState.open_collection_item),
+                    width="100%",
+                    align="start",
+                ),
             ),
-            rx.button(
-                "Закрыть",
-                variant="soft",
-                width="100%",
-                margin_top="0.6rem",
-                on_click=FinanceState.close_collection,
-            ),
-            max_width="360px",
+            max_width=MAX_WIDTH,
+            min_height="480px",
         ),
         open=FinanceState.open_collection_id != 0,
         on_open_change=FinanceState.set_collection_dialog_open,
