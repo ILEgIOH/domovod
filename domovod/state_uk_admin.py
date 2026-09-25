@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 from typing import List, Optional
 
 import reflex as rx
@@ -35,6 +36,14 @@ from .state import AuthState
 from .state_finance import FinanceState
 
 
+def _fmt_submitted(dt: datetime) -> str:
+    now = datetime.now(timezone.utc)
+    dt_utc = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    if dt_utc.date() == now.date():
+        return f"сегодня, {dt_utc.strftime('%H:%M')}"
+    return dt_utc.strftime("%d.%m.%Y, %H:%M")
+
+
 class BuildingItem(BaseModel):
     id: int
     address: str
@@ -59,12 +68,14 @@ class ResidentItem(BaseModel):
     phone: str
     entrance_number: int
     building_address: str
+    submitted_fmt: str = ""
 
 
 class UKAdminState(AuthState):
     buildings: List[BuildingItem] = []
     entrances: List[EntranceItem] = []
     residents: List[ResidentItem] = []
+    pending_residents: List[ResidentItem] = []
 
     new_building_address: str = ""
     new_entrance_building_id: str = ""
@@ -89,16 +100,42 @@ class UKAdminState(AuthState):
     edit_error: str = ""
     delete_confirm_input: str = ""
 
+    # --- R01–R11: «Жильцы и контакты» — отдельный подраздел меню
+    # «Управление» со своей мини-навигацией.
+    residents_view: str = "menu"  # menu|services|addresses|editor|residents|resident_detail|requests
+    resident_search: str = ""
+    selected_resident_id: int = 0
+    confirm_delete_resident_id: int = 0
+    reject_request_id: int = 0
+    reject_request_reason: str = ""
+
     set_new_building_address = make_setter("new_building_address")
     set_new_entrance_building_id = make_setter("new_entrance_building_id")
     set_new_entrance_number = make_setter("new_entrance_number")
     set_selected_building_id = make_setter("selected_building_id")
     set_edit_address_input = make_setter("edit_address_input")
     set_delete_confirm_input = make_setter("delete_confirm_input")
+    set_residents_view = make_setter("residents_view")
+    set_resident_search = make_setter("resident_search")
+    set_reject_request_reason = make_setter("reject_request_reason")
 
     @rx.var
     def delete_ready(self) -> bool:
         return self.delete_confirm_input.strip().upper() == "УДАЛИТЬ ДОМ"
+
+    @rx.var
+    def filtered_residents(self) -> List[ResidentItem]:
+        q = self.resident_search.strip().lower()
+        if not q:
+            return self.residents
+        return [
+            r for r in self.residents
+            if q in r.full_name.lower() or q in r.apartment.lower()
+        ]
+
+    @rx.var
+    def selected_resident(self) -> Optional[ResidentItem]:
+        return next((r for r in self.residents if r.id == self.selected_resident_id), None)
 
     @rx.var
     def visible_entrances(self) -> List[EntranceItem]:
@@ -145,7 +182,9 @@ class UKAdminState(AuthState):
             for e in entrance_rows:
                 count = len(
                     session.exec(
-                        select(Resident).where(Resident.entrance_id == e.id)
+                        select(Resident).where(
+                            Resident.entrance_id == e.id, Resident.status == "active"
+                        )
                     ).all()
                 )
                 join_url = build_join_url(origin, e.invite_code)
@@ -170,23 +209,24 @@ class UKAdminState(AuthState):
                 select(Resident).where(Resident.tenant_id == self.tenant_id)
             ).all()
             entrance_lookup = {e.id: e for e in entrance_rows}
+            pending_items = []
             for r in all_residents:
                 ent = entrance_lookup.get(r.entrance_id)
-                resident_items.append(
-                    ResidentItem(
-                        id=r.id,
-                        full_name=r.full_name,
-                        apartment=r.apartment,
-                        phone=r.phone or "—",
-                        entrance_number=ent.number if ent else 0,
-                        building_address=building_map.get(
-                            ent.building_id, "?"
-                        )
-                        if ent
-                        else "?",
-                    )
+                item = ResidentItem(
+                    id=r.id,
+                    full_name=r.full_name,
+                    apartment=r.apartment,
+                    phone=r.phone or "—",
+                    entrance_number=ent.number if ent else 0,
+                    building_address=building_map.get(ent.building_id, "?") if ent else "?",
+                    submitted_fmt=_fmt_submitted(r.created_at),
                 )
+                if r.status == "pending":
+                    pending_items.append(item)
+                else:
+                    resident_items.append(item)
             self.residents = resident_items
+            self.pending_residents = pending_items
 
         if not self.selected_building_id and self.buildings:
             self.selected_building_id = str(self.buildings[0].id)
@@ -425,6 +465,71 @@ class UKAdminState(AuthState):
             session.commit()
         self._reset_session()
         return rx.redirect("/")
+
+    # ---------------- R05/R07: список и карточка жильца ----------------
+
+    @rx.event
+    def open_resident_detail(self, resident_id: int):
+        self.selected_resident_id = resident_id
+        self.residents_view = "resident_detail"
+
+    @rx.event
+    def ask_delete_resident(self, resident_id: int):
+        self.confirm_delete_resident_id = resident_id
+
+    @rx.event
+    def cancel_delete_resident(self):
+        self.confirm_delete_resident_id = 0
+
+    @rx.event
+    def confirm_delete_resident(self):
+        """R11 «Удалить из дома» — снимает доступ, публикации остаются."""
+        resident_id = self.confirm_delete_resident_id
+        self.confirm_delete_resident_id = 0
+        with get_session() as session:
+            r = session.get(Resident, resident_id)
+            if r and r.tenant_id == int(self.tenant_id):
+                session.delete(r)
+                session.commit()
+        self.selected_resident_id = 0
+        self.residents_view = "residents"
+        return UKAdminState.load_admin_data
+
+    # ---------------- R06: заявки на уже занятую квартиру ----------------
+
+    @rx.event
+    def approve_pending_resident(self, resident_id: int):
+        with get_session() as session:
+            r = session.get(Resident, resident_id)
+            if r and r.tenant_id == int(self.tenant_id) and r.status == "pending":
+                r.status = "active"
+                session.add(r)
+                session.commit()
+        return UKAdminState.load_admin_data
+
+    @rx.event
+    def ask_reject_request(self, resident_id: int):
+        self.reject_request_id = resident_id
+        self.reject_request_reason = ""
+
+    @rx.event
+    def cancel_reject_request(self):
+        self.reject_request_id = 0
+        self.reject_request_reason = ""
+
+    @rx.event
+    def confirm_reject_request(self):
+        """Отклонённая заявка просто удаляется — занявший квартиру раньше
+        остаётся единственным жителем этой квартиры."""
+        resident_id = self.reject_request_id
+        self.reject_request_id = 0
+        self.reject_request_reason = ""
+        with get_session() as session:
+            r = session.get(Resident, resident_id)
+            if r and r.tenant_id == int(self.tenant_id) and r.status == "pending":
+                session.delete(r)
+                session.commit()
+        return UKAdminState.load_admin_data
 
     @rx.event
     def stop_live(self):

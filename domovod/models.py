@@ -70,6 +70,10 @@ class Resident(SQLModel, table=True):
     phone: Optional[str] = Field(default=None, unique=True, index=True)
     password_hash: Optional[str] = Field(default=None)
     max_user_id: Optional[str] = Field(default=None, unique=True, index=True)
+    # R06: когда квартиру уже занял другой житель, новый заявитель ждёт
+    # подтверждения администратора вместо мгновенного входа. "active" —
+    # обычный житель, "pending" — заявка на рассмотрении.
+    status: str = "active"
     created_at: datetime = Field(default_factory=now_utc)
 
 
@@ -205,13 +209,18 @@ class PollVote(SQLModel, table=True):
 
 
 class UsefulAddress(SQLModel, table=True):
-    """Полезный адрес/контакт подъезда — задаёт УК, видят все жители."""
+    """Служба дома или полезный адрес подъезда — задаёт УК, видят все
+    жители. category различает два раздела R01 в одной таблице:
+    "service" — служба дома (R02, value = имя), "address" — полезный
+    адрес (R03, value = адрес)."""
 
     id: Optional[int] = Field(default=None, primary_key=True)
     entrance_id: int = Field(index=True)
     tenant_id: int = Field(index=True)
+    category: str = "address"  # "service" | "address"
     title: str
     value: str
+    phone: str = ""
     created_at: datetime = Field(default_factory=now_utc)
 
 

@@ -127,6 +127,35 @@ def _error_view() -> rx.Component:
     )
 
 
+def _pending_view() -> rx.Component:
+    """R06: квартиру уже занял другой активный житель — заявка ждёт
+    подтверждения администратора вместо мгновенного входа."""
+    return rx.vstack(
+        rx.icon("clock", size=32, color=BRAND_PURPLE),
+        rx.heading("Заявка на рассмотрении", size="5", text_align="center"),
+        rx.cond(
+            AuthState.join_address != "",
+            rx.text(
+                AuthState.join_address + " · " + AuthState.join_entrance_subtitle,
+                size="2",
+                weight="medium",
+                text_align="center",
+            ),
+        ),
+        rx.text(
+            "В этой квартире уже есть житель. Администратор подтвердит "
+            "вашу заявку, и дом откроется автоматически.",
+            size="2",
+            color="var(--gray-10)",
+            text_align="center",
+        ),
+        spacing="3",
+        align="center",
+        padding_top="3rem",
+        width="100%",
+    )
+
+
 def _already_signed_in_view() -> rx.Component:
     return rx.vstack(
         rx.icon("circle-check", size=32, color="var(--accent-9)"),
@@ -152,9 +181,13 @@ def join_page() -> rx.Component:
                 AuthState.is_resident,
                 _already_signed_in_view(),
                 rx.cond(
-                    AuthState.join_error != "",
-                    _error_view(),
-                    _join_form(),
+                    AuthState.join_pending,
+                    _pending_view(),
+                    rx.cond(
+                        AuthState.join_error != "",
+                        _error_view(),
+                        _join_form(),
+                    ),
                 ),
             ),
             width="100%",

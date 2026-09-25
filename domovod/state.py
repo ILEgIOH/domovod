@@ -120,6 +120,9 @@ class AuthState(rx.State):
     # определяет только тот, кто зарегистрировал её первым.
     join_apartment_taken: bool = False
     join_apartment_household: int = 0
+    # R06: квартира занята другим активным жителем — заявка ждёт
+    # подтверждения администратора вместо мгновенного входа.
+    join_pending: bool = False
 
     set_auth_view = make_setter("auth_view")
     set_res_household_size = make_setter("res_household_size")
@@ -503,6 +506,7 @@ class AuthState(rx.State):
         self.join_error = ""
         self.join_address = ""
         self.join_entrance_subtitle = ""
+        self.join_pending = False
         if self.is_resident:
             return rx.redirect("/app")
         code = self.router.url.query_parameters.get("code", "").strip().upper()
@@ -523,6 +527,14 @@ class AuthState(rx.State):
                 select(Resident).where(Resident.max_user_id == self.max_device_id)
             ).first()
             if existing:
+                if existing.status == "pending":
+                    # R06: заявка ещё не подтверждена администратором.
+                    self.join_pending = True
+                    self.join_address = "?"
+                    building = session.get(Building, entrance.building_id)
+                    self.join_address = building.address if building else "?"
+                    self.join_entrance_subtitle = f"Подъезд {entrance.number}"
+                    return
                 self._login_resident_record(existing, entrance)
                 return rx.redirect("/app")
 
@@ -555,6 +567,7 @@ class AuthState(rx.State):
                 select(Resident).where(
                     Resident.entrance_id == self.join_entrance_id,
                     Resident.apartment == apt,
+                    Resident.status == "active",
                 )
             ).first()
         if existing:
@@ -587,21 +600,35 @@ class AuthState(rx.State):
                 self.join_error = "Код приглашения недействителен. Уточните ссылку в управляющей компании."
                 return
 
-            # Квартиру мог уже зарегистрировать другой член семьи по этому
-            # же коду — тогда число жильцов берём у него, а не у нового.
+            # R06: квартиру мог уже занять другой житель — тогда новый
+            # заявитель ждёт подтверждения администратора, а не входит
+            # мгновенно.
             existing_in_apartment = session.exec(
                 select(Resident).where(
                     Resident.entrance_id == entrance.id,
                     Resident.apartment == apt,
+                    Resident.status == "active",
                 )
             ).first()
             if existing_in_apartment:
-                household = existing_in_apartment.household_size
-            else:
-                try:
-                    household = max(int(self.res_household_size or 0), 0)
-                except ValueError:
-                    household = 0
+                resident = Resident(
+                    tenant_id=entrance.tenant_id,
+                    entrance_id=entrance.id,
+                    full_name=full_name,
+                    apartment=apt,
+                    household_size=existing_in_apartment.household_size,
+                    max_user_id=self.max_device_id,
+                    status="pending",
+                )
+                session.add(resident)
+                session.commit()
+                self.join_pending = True
+                return
+
+            try:
+                household = max(int(self.res_household_size or 0), 0)
+            except ValueError:
+                household = 0
 
             resident = Resident(
                 tenant_id=entrance.tenant_id,
