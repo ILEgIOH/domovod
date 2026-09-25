@@ -78,14 +78,17 @@ class Resident(SQLModel, table=True):
 
 
 class News(SQLModel, table=True):
-    """Объявление от управляющей компании (короткая «таблетка» на главном экране)."""
+    """Объявление от управляющей компании (короткая «таблетка» на главном экране,
+    полный список — B01–B05)."""
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    entrance_id: int = Field(index=True)
     tenant_id: int = Field(index=True)
-    building_id: Optional[int] = Field(default=None, index=True)
     title: str
     body: str
-    icon: str = "bell"
+    period_text: str = ""
+    category: str = "general"  # "water" | "power" | "elevator" | "general"
+    urgency: str = "normal"  # "normal" | "urgent"
     author_name: str = ""
     created_at: datetime = Field(default_factory=now_utc)
 
