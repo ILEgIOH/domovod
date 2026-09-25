@@ -5,18 +5,19 @@ from __future__ import annotations
 import reflex as rx
 
 from ..state import AuthState
-from ..ui import BRAND_NEON, BRAND_PURPLE, MAX_WIDTH, error_text, field_label
+from ..ui import BRAND_ACTION_TEXT, BRAND_NEON, BRAND_PURPLE, MAX_WIDTH, error_text, field_label
 
 
 def _splash_view() -> rx.Component:
     """Заставка — первое, что видит пользователь. Ведёт либо к жителю
-    (регистрация по коду приглашения), либо к УК (регистрация компании)."""
+    (регистрация по коду приглашения), либо к УК (регистрация компании).
+    Точно по макету V01: без разделителя «или» между кнопками."""
     return rx.vstack(
         rx.spacer(),
         rx.vstack(
             rx.image(src="/logo.png", width="96px", height="96px", style={"objectFit": "contain"}),
             rx.heading(
-                "Дом – это проще, когда все рядом",
+                "Дом — это проще, когда все рядом",
                 size="7",
                 weight="bold",
                 text_align="center",
@@ -40,16 +41,15 @@ def _splash_view() -> rx.Component:
                 width="100%",
                 size="3",
                 radius="full",
-                style={"background": BRAND_NEON, "color": "black"},
+                style={"background": BRAND_NEON, "color": BRAND_ACTION_TEXT},
                 on_click=AuthState.open_join_code_view,
             ),
-            rx.text("или", size="2", color="var(--gray-9)"),
             rx.button(
                 "Создать дом",
                 width="100%",
                 size="3",
                 radius="full",
-                style={"background": BRAND_PURPLE, "color": "white"},
+                style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
                 on_click=AuthState.open_create_home_view,
             ),
             spacing="3",
@@ -57,8 +57,18 @@ def _splash_view() -> rx.Component:
             width="100%",
         ),
         rx.vstack(
-            rx.text("Есть ссылка или QR?", size="1", color="var(--gray-9)", text_align="center"),
-            rx.text("Дом откроется автоматически", size="1", color="var(--gray-9)", text_align="center"),
+            rx.text(
+                "Есть ссылка или QR? Дом откроется",
+                size="1",
+                color="var(--gray-9)",
+                text_align="center",
+            ),
+            rx.text(
+                "автоматически после перехода.",
+                size="1",
+                color="var(--gray-9)",
+                text_align="center",
+            ),
             spacing="0",
             align="center",
             padding_top="2.5rem",
@@ -98,42 +108,14 @@ def _splash_view() -> rx.Component:
 
 
 def _back_link() -> rx.Component:
-    return rx.button(
-        rx.icon("arrow-left", size=16),
-        "Назад",
-        variant="ghost",
-        size="2",
+    """Голая стрелка назад без подписи — как в макете (J01/A01 и т.д.),
+    без текста «Назад» и без кружка-подложки под иконкой."""
+    return rx.box(
+        rx.icon("chevron-left", size=24, color="var(--gray-11)"),
         on_click=AuthState.set_auth_view("choose"),
-        margin_bottom="0.75rem",
-    )
-
-
-def _code_box(index: int, value, placeholder: str) -> rx.Component:
-    # Фокус НЕ вешаем через статичный auto_focus (HTML-атрибут) — он бы
-    # срабатывал при каждой перерисовке и мог перетягивать фокус обратно
-    # на это поле. Вместо этого начальный фокус ставится один раз через
-    # AuthState.open_join_code_view, а дальше — через set_join_code_char/
-    # join_code_key_down.
-    return rx.input(
-        value=value,
-        on_change=AuthState.set_join_code_char(index),
-        on_key_down=AuthState.join_code_key_down(index),
-        placeholder=placeholder,
-        id=f"join_code_c{index}_input",
-        max_length=1,
-        text_align="center",
-        style={
-            "fontSize": "1.75rem",
-            "fontWeight": "700",
-            "caretColor": "transparent",
-            "textTransform": "uppercase",
-        },
-        background="transparent",
-        border="none",
-        outline="none",
-        box_shadow="none",
-        padding="0",
-        width="1.3em",
+        cursor="pointer",
+        margin_bottom="1.5rem",
+        display="inline-flex",
     )
 
 
@@ -143,12 +125,27 @@ def _create_home_view() -> rx.Component:
     (для случая когда создатель сам там живёт)."""
     home_ready = AuthState.create_home_ready
     return rx.vstack(
-        _back_link(),
-        rx.heading(
-            "Создать дом",
-            size="6",
-            weight="bold",
-            style={"color": BRAND_PURPLE},
+        rx.box(
+            rx.icon(
+                "chevron-left",
+                size=24,
+                color="var(--gray-11)",
+                cursor="pointer",
+                on_click=AuthState.set_auth_view("choose"),
+                style={"position": "absolute", "left": "0"},
+            ),
+            rx.heading(
+                "Создать дом",
+                size="6",
+                weight="bold",
+                style={"color": BRAND_ACTION_TEXT},
+                text_align="center",
+                width="100%",
+            ),
+            position="relative",
+            display="flex",
+            align_items="center",
+            width="100%",
             margin_bottom="1.5rem",
         ),
         error_text(AuthState.create_error),
@@ -220,7 +217,7 @@ def _create_home_view() -> rx.Component:
             disabled=home_ready == False,  # noqa: E712
             style=rx.cond(
                 home_ready,
-                {"background": BRAND_PURPLE, "color": "white"},
+                {"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
                 {"background": "var(--gray-4)", "color": "var(--gray-9)"},
             ),
             on_click=AuthState.create_home_confirm,
@@ -242,78 +239,82 @@ def _create_home_view() -> rx.Component:
 
 
 def _join_code_view() -> rx.Component:
-    """Экран «Введите код»: ручной ввод кода приглашения — 6 отдельных
-    полей по одному символу (3 буквы + 3 цифры), как в OTP-вводе, так
-    что вставить символ «в середину» или не того типа физически нельзя.
-    Белая кнопка, пока код не введён полностью → фиолетовая, когда готов
-    к проверке → красная «Дом не найден», если код неверный."""
+    """Экран «Присоединиться» — J01/J02/J03 из макета: одно поле «Код
+    дома», кнопка «Продолжить» серая → фиолетовая при готовности; при
+    ошибке — красная рамка поля, текст ошибки под ним и вторая кнопка
+    «Ввести другой код»."""
     return rx.vstack(
         _back_link(),
-        rx.heading("Введите код", size="6", weight="bold", margin_bottom="1.5rem"),
-        rx.hstack(
-            _code_box(1, AuthState.join_code_c1, "X"),
-            _code_box(2, AuthState.join_code_c2, "X"),
-            _code_box(3, AuthState.join_code_c3, "X"),
-            rx.text("–", size="7", weight="bold", color="var(--gray-9)"),
-            _code_box(4, AuthState.join_code_c4, "0"),
-            _code_box(5, AuthState.join_code_c5, "0"),
-            _code_box(6, AuthState.join_code_c6, "0"),
-            align="center",
-            justify="center",
-            spacing="2",
-            background="var(--gray-3)",
-            border_radius="14px",
-            height="4.5rem",
+        rx.heading("Присоединиться", size="7", weight="bold", margin_bottom="0.4rem"),
+        rx.text(
+            "Введите код из приглашения",
+            size="3",
+            color="var(--gray-9)",
+            margin_bottom="2rem",
+        ),
+        field_label("Код дома"),
+        rx.input(
+            value=AuthState.join_code_display,
+            on_change=AuthState.set_join_code_input,
+            on_key_down=AuthState.join_code_input_key_down,
+            id="join_code_input_field",
+            placeholder="Например, DOM246",
+            auto_focus=True,
+            radius="full",
+            background="white",
+            style={
+                "fontSize": "1.1rem",
+                "border": rx.cond(AuthState.join_code_error, "1.5px solid var(--red-9)", "none"),
+            },
             width="100%",
+            height="3.25rem",
+        ),
+        rx.cond(
+            AuthState.join_code_error,
+            rx.text(
+                "Код не найден. Проверьте 6 символов.",
+                size="2",
+                color="var(--red-9)",
+                margin_top="0.5rem",
+            ),
         ),
         rx.text(
-            "Код обычно присылает администратор дома",
+            "Код можно получить у администратора",
             size="2",
             color="var(--gray-9)",
-            text_align="center",
-            padding_top="0.75rem",
-            width="100%",
+            margin_top="1.5rem",
+        ),
+        rx.text("или соседей в чате дома.", size="2", color="var(--gray-9)"),
+        rx.spacer(),
+        rx.cond(
+            AuthState.join_code_error,
+            rx.button(
+                "Ввести другой код",
+                width="100%",
+                size="3",
+                radius="full",
+                variant="soft",
+                color_scheme="gray",
+                margin_bottom="0.75rem",
+                on_click=AuthState.clear_join_code,
+            ),
         ),
         rx.button(
-            rx.cond(AuthState.join_code_error, "Дом не найден", "Найти дом"),
+            "Продолжить",
             width="100%",
             size="3",
             radius="full",
-            margin_top="3rem",
             disabled=AuthState.join_code_ready == False,  # noqa: E712
             style=rx.cond(
-                AuthState.join_code_error,
-                {"background": "var(--red-9)", "color": "white"},
-                rx.cond(
-                    AuthState.join_code_ready,
-                    {"background": BRAND_PURPLE, "color": "white"},
-                    {"background": "var(--gray-4)", "color": "var(--gray-9)"},
-                ),
+                AuthState.join_code_ready,
+                {"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+                {"background": "var(--gray-4)", "color": "var(--gray-9)"},
             ),
             on_click=AuthState.lookup_join_code,
         ),
-        rx.cond(
-            AuthState.join_code_ready == False,  # noqa: E712
-            rx.text(
-                "Сначала введите код или запросите его у вашего ответственного по дому.",
-                size="1",
-                color="var(--gray-9)",
-                text_align="center",
-                padding_top="1rem",
-            ),
-            rx.cond(
-                AuthState.join_code_error,
-                rx.text(
-                    "Проверьте правильно ли написали код. Также мог обновить админ.",
-                    size="1",
-                    color="var(--gray-9)",
-                    text_align="center",
-                    padding_top="1rem",
-                ),
-            ),
-        ),
         width="100%",
-        align="center",
+        min_height="100vh",
+        align="start",
     )
 
 
