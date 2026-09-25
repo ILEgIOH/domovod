@@ -12,7 +12,17 @@ from ..state_contacts import ContactsState
 from ..state_finance import FinanceState
 from ..state_news import ICON_CHOICES, NewsState
 from ..state_uk_admin import UKAdminState
-from ..ui import CARD_BG, error_text, field_label, progress_bar, section_card
+from ..ui import (
+    BRAND_ACTION_TEXT,
+    BRAND_PURPLE,
+    BRAND_PURPLE_TINT,
+    CARD_BG,
+    MAX_WIDTH,
+    error_text,
+    field_label,
+    progress_bar,
+    section_card,
+)
 
 def _icon_bg_color(icon) -> rx.Var:
     """Цвет плашки объявления по иконке. `icon` — реактивный Var (элемент
@@ -896,8 +906,167 @@ def _create_section() -> rx.Component:
     )
 
 
+def _invite_footer_buttons() -> rx.Component:
+    return rx.vstack(
+        rx.button(
+            rx.cond(UKAdminState.invite_code_copied, "Скопировано", "Скопировать код"),
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE_TINT, "color": BRAND_ACTION_TEXT},
+            on_click=UKAdminState.copy_invite_code,
+        ),
+        rx.button(
+            "Поделиться",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=UKAdminState.share_invite,
+        ),
+        width="100%",
+        spacing="2",
+    )
+
+
+def _invite_code_view(entrance) -> rx.Component:
+    return rx.vstack(
+        rx.box(
+            rx.vstack(
+                rx.text(
+                    "Код дома",
+                    size="2",
+                    color=BRAND_ACTION_TEXT,
+                    text_align="center",
+                ),
+                rx.text(
+                    entrance.invite_code_display,
+                    size="8",
+                    weight="bold",
+                    color=BRAND_ACTION_TEXT,
+                    text_align="center",
+                ),
+                spacing="1",
+                align="center",
+                width="100%",
+            ),
+            width="100%",
+            background=BRAND_PURPLE_TINT,
+            border_radius="20px",
+            padding="1.4rem 1rem",
+            margin_bottom="0.75rem",
+        ),
+        rx.box(
+            rx.hstack(
+                rx.vstack(
+                    rx.text("Показать QR", size="3", weight="bold"),
+                    rx.text("Удобно распечатать у входа", size="2", color="var(--gray-9)"),
+                    spacing="0",
+                    align="start",
+                ),
+                rx.spacer(),
+                rx.icon("chevron-right", size=18, color="var(--gray-9)"),
+                width="100%",
+                align="center",
+            ),
+            width="100%",
+            background="white",
+            border_radius="16px",
+            padding="0.9rem 1rem",
+            cursor="pointer",
+            on_click=UKAdminState.show_invite_qr,
+            margin_bottom="1.25rem",
+        ),
+        rx.text("По приглашению соседи укажут", size="2", color="var(--gray-9)"),
+        rx.text("своё имя и квартиру.", size="2", color="var(--gray-9)", margin_bottom="1.5rem"),
+        rx.spacer(),
+        _invite_footer_buttons(),
+        width="100%",
+        align="start",
+    )
+
+
+def _invite_qr_view(entrance) -> rx.Component:
+    return rx.vstack(
+        rx.center(
+            rx.image(
+                src=entrance.qr_data_uri,
+                width="220px",
+                height="220px",
+                border_radius="12px",
+            ),
+            width="100%",
+            background="white",
+            border_radius="20px",
+            padding="1.5rem",
+            margin_bottom="1.25rem",
+        ),
+        rx.text("По приглашению соседи укажут", size="2", color="var(--gray-9)"),
+        rx.text("своё имя и квартиру.", size="2", color="var(--gray-9)", margin_bottom="1.5rem"),
+        rx.spacer(),
+        _invite_footer_buttons(),
+        width="100%",
+        align="start",
+    )
+
+
+def _invite_after_create_modal() -> rx.Component:
+    """A03–A05: «Пригласить соседей», модалкой поверх пустого дома сразу
+    после «Создать дом» (H03)."""
+    entrance = UKAdminState.invite_entrance
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Пригласить соседей", style={"display": "none"}),
+            rx.cond(
+                entrance,
+                rx.vstack(
+                    rx.hstack(
+                        rx.icon("x", size=16, color="var(--gray-11)"),
+                        rx.text("Закрыть", size="2", weight="medium"),
+                        spacing="1",
+                        align="center",
+                        cursor="pointer",
+                        on_click=UKAdminState.close_invite_modal,
+                        width="fit-content",
+                        margin_bottom="1rem",
+                    ),
+                    rx.icon(
+                        "chevron-left",
+                        size=22,
+                        color="var(--gray-11)",
+                        cursor="pointer",
+                        on_click=UKAdminState.back_or_close_invite,
+                        margin_bottom="1rem",
+                    ),
+                    rx.heading("Пригласить соседей", size="6", weight="bold", margin_bottom="0.3rem"),
+                    rx.text(
+                        entrance.building_address + " · подъезд " + entrance.number.to_string(),
+                        size="2",
+                        color="var(--gray-9)",
+                        margin_bottom="1.5rem",
+                    ),
+                    rx.cond(
+                        UKAdminState.invite_modal_view == "qr",
+                        _invite_qr_view(entrance),
+                        _invite_code_view(entrance),
+                    ),
+                    width="100%",
+                    align="start",
+                ),
+            ),
+            max_width=MAX_WIDTH,
+            min_height="520px",
+            display="flex",
+            flex_direction="column",
+        ),
+        open=UKAdminState.invite_modal_view != "",
+        on_open_change=UKAdminState.set_invite_modal_open,
+    )
+
+
 def home_tab() -> rx.Component:
     return rx.vstack(
+        rx.cond(AuthState.is_uk, _invite_after_create_modal()),
         _identity_card(),
         _home_header(),
         rx.cond(
