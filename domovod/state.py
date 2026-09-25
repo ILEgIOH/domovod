@@ -66,17 +66,10 @@ class AuthState(rx.State):
     create_apartment: str = ""
     create_error: str = ""
 
-    # --- экран «Введите код» (ручной ввод, без ссылки/QR): 6 отдельных
-    # однобуквенных/одноцифровых полей (как OTP-ввод) — c1..c3 буквы,
-    # c4..c6 цифры. Так физически нельзя вставить символ «в середину» или
-    # ввести не тот тип символа не в свою позицию; курсор всегда переходит
-    # к следующему полю сам, дефис между блоками статичный.
-    join_code_c1: str = ""
-    join_code_c2: str = ""
-    join_code_c3: str = ""
-    join_code_c4: str = ""
-    join_code_c5: str = ""
-    join_code_c6: str = ""
+    # --- экран «Присоединиться» (J01–J03, ручной ввод кода дома): одно
+    # поле на 6 символов (3 буквы + 3 цифры), храним уже без пробела —
+    # пробел для читаемости добавляется только на отображении (join_code_display).
+    join_code_input: str = ""
     join_code_error: bool = False
 
     # --- вход по ссылке/QR-коду (/join?code=...) ---
@@ -107,16 +100,14 @@ class AuthState(rx.State):
 
     @rx.var
     def join_code_ready(self) -> bool:
-        return all(
-            [
-                self.join_code_c1,
-                self.join_code_c2,
-                self.join_code_c3,
-                self.join_code_c4,
-                self.join_code_c5,
-                self.join_code_c6,
-            ]
-        )
+        return len(self.join_code_input) == 6
+
+    @rx.var
+    def join_code_display(self) -> str:
+        """Код с пробелом после 3-го символа для читаемости (как в макете:
+        «DOM 246»), сам ввод хранится без пробела."""
+        code = self.join_code_input
+        return code if len(code) <= 3 else f"{code[:3]} {code[3:]}"
 
     def _reset_session(self) -> None:
         self.role = ""
@@ -156,51 +147,36 @@ class AuthState(rx.State):
         if self.is_hydrated and not self.is_resident:
             return rx.redirect("/")
 
-    # ---------------- Житель: экран «Введите код» ----------------
+    # ---------------- Житель: экран «Присоединиться» (ввод кода) ----------------
 
     @rx.event
-    def set_join_code_char(self, index: int, value: str):
-        """index 1-3 — буквы, 4-6 — цифры. Берём последний введённый
-        символ (на случай вставки/автозаполнения нескольких), проверяем
-        его тип и, если он подходит своей позиции, сразу переводим фокус
-        на следующее поле — так ввод идёт строго слева направо.
-
-        Если символ не подходит, очищаем поле — но не просто присваиванием
-        (Reflex не шлёт обновление на фронт, если значение var не
-        изменилось, а поле и так уже пустое, поэтому браузер оставил бы
-        невалидный символ висеть в DOM необработанным), а прямой правкой
-        DOM через rx.call_script. Это не трогает фокус, в отличие от
-        пересоздания компонента, так что курсор остаётся на месте.
-        """
-        raw = value.strip().upper()
-        ch = raw[-1] if raw else ""
-        is_letter_slot = index <= 3
-        valid = ch.isalpha() if is_letter_slot else ch.isdigit()
-        setattr(self, f"join_code_c{index}", ch if valid else "")
+    def set_join_code_input(self, value: str):
+        """Код дома: только буквы и цифры, до 6 символов, регистр не важен
+        (макет J01–J03). Значение хранится без пробела — пробел после 3-го
+        символа добавляется только для отображения, в join_code_display."""
+        self.join_code_input = "".join(ch for ch in value.upper() if ch.isalnum())[:6]
         self.join_code_error = False
-        if valid and index < 6:
-            return rx.set_focus(f"join_code_c{index + 1}_input")
-        if not valid:
-            return rx.call_script(
-                f"document.getElementById('join_code_c{index}_input').value = ''"
-            )
 
     @rx.event
-    def join_code_key_down(self, index: int, key: str, info: KeyInputInfo):
-        if key == "Backspace" and not getattr(self, f"join_code_c{index}") and index > 1:
-            return rx.set_focus(f"join_code_c{index - 1}_input")
+    def join_code_input_key_down(self, key: str, info: KeyInputInfo):
+        """Блокирует запрещённый символ на нажатии клавиши, а не стирает
+        его постфактум — так он даже на долю секунды не появляется в поле."""
+        if len(key) == 1 and not key.isalnum():
+            return rx.prevent_default
+
+    @rx.event
+    def clear_join_code(self):
+        """«Ввести другой код» (J03) — сброс поля и ошибки без выхода с экрана."""
+        self.join_code_input = ""
+        self.join_code_error = False
+        return rx.set_focus("join_code_input_field")
 
     @rx.event
     def open_join_code_view(self):
-        self.join_code_c1 = ""
-        self.join_code_c2 = ""
-        self.join_code_c3 = ""
-        self.join_code_c4 = ""
-        self.join_code_c5 = ""
-        self.join_code_c6 = ""
+        self.join_code_input = ""
         self.join_code_error = False
         self.auth_view = "join_code"
-        return rx.set_focus("join_code_c1_input")
+        return rx.set_focus("join_code_input_field")
 
     @rx.event
     def open_create_home_view(self):
@@ -215,14 +191,7 @@ class AuthState(rx.State):
     def lookup_join_code(self):
         if not self.join_code_ready:
             return
-        code = (
-            self.join_code_c1
-            + self.join_code_c2
-            + self.join_code_c3
-            + self.join_code_c4
-            + self.join_code_c5
-            + self.join_code_c6
-        )
+        code = self.join_code_input
         with get_session() as session:
             entrance = session.exec(
                 select(Entrance).where(Entrance.invite_code == code)
