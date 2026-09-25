@@ -12,6 +12,7 @@ from .state_community import CommunityState
 from .state_contacts import ContactsState
 from .state_finance import FinanceState
 from .state_news import NewsState
+from .state_proposals import ProposalsState
 from .state_uk_admin import UKAdminState
 
 init_db()
@@ -57,5 +58,6 @@ app.add_page(
         FinanceState.start_live,
         CommunityState.load_community,
         ContactsState.load_contacts,
+        ProposalsState.load_my_proposals,
     ],
 )

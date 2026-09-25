@@ -60,6 +60,9 @@ class CollectionItem(BaseModel):
     progress_pct: int
     is_active: bool
     status: str = "published"
+    amount_mode: str = "per_apartment"
+    instructions: str = ""
+    rejection_reason: str = ""
     end_date_fmt: str = ""
     proposed_by_name: str = ""
     my_contribution: float = 0
@@ -102,7 +105,9 @@ class FinanceState(AuthState):
     col_error: str = ""
 
     propose_col_title: str = ""
+    propose_col_mode: str = "per_apartment"  # "per_apartment" | "total" (F02/F04)
     propose_col_description: str = ""
+    propose_col_instructions: str = ""
     propose_col_amount: str = ""
     propose_col_end_date: str = ""
     propose_error: str = ""
@@ -208,7 +213,9 @@ class FinanceState(AuthState):
     set_new_col_amount = make_setter("new_col_amount")
     set_new_col_end_date = make_setter("new_col_end_date")
     set_propose_col_title = make_setter("propose_col_title")
+    set_propose_col_mode = make_setter("propose_col_mode")
     set_propose_col_description = make_setter("propose_col_description")
+    set_propose_col_instructions = make_setter("propose_col_instructions")
     set_propose_col_amount = make_setter("propose_col_amount")
     set_propose_col_end_date = make_setter("propose_col_end_date")
 
@@ -294,6 +301,9 @@ class FinanceState(AuthState):
                         progress_pct=self._pct(collected, c.target_amount),
                         is_active=c.is_active,
                         status=c.status,
+                        amount_mode=c.amount_mode,
+                        instructions=c.instructions,
+                        rejection_reason=c.rejection_reason,
                         end_date_fmt=_fmt_date(c.end_date),
                         proposed_by_name=proposer.full_name if proposer else "",
                     )
@@ -465,29 +475,46 @@ class FinanceState(AuthState):
         self.show_proposed_dialog = is_open
 
     @rx.event
-    def reject_collection(self, collection_id: int):
-        """УК отклоняет предложенный сбор — удаляет его."""
+    def reject_collection(self, collection_id: int, reason: str):
+        """УК отклоняет предложенный сбор (F15) — статус меняется, запись
+        остаётся видна жителю в «Моих предложениях» вместе с причиной."""
         with get_session() as session:
             c = session.get(Collection, collection_id)
             if c and c.tenant_id == int(self.tenant_id) and c.status == "proposed":
-                session.delete(c)
+                c.status = "rejected"
+                c.rejection_reason = reason.strip() or "Причина не указана"
+                c.is_active = False
+                session.add(c)
                 session.commit()
         return FinanceState.load_uk_finance
 
     # ---------------- Житель: просмотр, предложение и оплата ----------------
 
-    @rx.event
-    def propose_collection(self):
-        """Житель предлагает сбор — он появится у УК во «Предложенных»."""
-        self.propose_error = ""
-        title = self.propose_col_title.strip()
-        if not title or not self.propose_col_amount:
-            self.propose_error = "Заполните название и сумму"
-            return
+    @rx.var
+    def propose_col_step1_valid(self) -> bool:
+        """F02 → «Далее»: название 3–100 символов, сумма больше нуля."""
+        title_len = len(self.propose_col_title.strip())
         try:
             amount = float(self.propose_col_amount.replace(",", "."))
         except ValueError:
-            self.propose_error = "Некорректная сумма"
+            amount = 0
+        return 3 <= title_len <= 100 and amount > 0
+
+    @rx.event
+    def propose_collection(self):
+        """F03 «Отправить администратору» — заявка уходит УК во «Предложенные»."""
+        self.propose_error = ""
+        title = self.propose_col_title.strip()
+        description = self.propose_col_description.strip()
+        try:
+            amount = float(self.propose_col_amount.replace(",", "."))
+        except ValueError:
+            amount = 0
+        if not (3 <= len(title) <= 100) or amount <= 0:
+            self.propose_error = "Проверьте название и сумму"
+            return
+        if not description:
+            self.propose_error = "Опишите, на что собираем"
             return
         with get_session() as session:
             session.add(
@@ -495,7 +522,9 @@ class FinanceState(AuthState):
                     entrance_id=self.entrance_id,
                     tenant_id=self.tenant_id,
                     title=title,
-                    description=self.propose_col_description.strip(),
+                    description=description,
+                    instructions=self.propose_col_instructions.strip(),
+                    amount_mode=self.propose_col_mode,
                     target_amount=amount,
                     end_date=self._parse_date(self.propose_col_end_date),
                     status="proposed",
@@ -505,10 +534,29 @@ class FinanceState(AuthState):
             )
             session.commit()
         self.propose_col_title = ""
+        self.propose_col_mode = "per_apartment"
         self.propose_col_description = ""
+        self.propose_col_instructions = ""
         self.propose_col_amount = ""
         self.propose_col_end_date = ""
+        self.create_flow_done = True
         return FinanceState.load_resident_finance
+
+    @rx.event
+    def start_edit_collection(self, collection_id: int):
+        """F15 «Исправить и отправить» — переносит поля отклонённого сбора
+        обратно в мастер (F02); повторная отправка создаёт новую заявку."""
+        with get_session() as session:
+            c = session.get(Collection, collection_id)
+            if not c or c.proposed_by_resident_id != self.user_id or c.status != "rejected":
+                return
+            self.propose_col_title = c.title
+            self.propose_col_mode = c.amount_mode
+            self.propose_col_description = c.description
+            self.propose_col_instructions = c.instructions
+            self.propose_col_amount = str(c.target_amount) if c.target_amount else ""
+            self.propose_col_end_date = c.end_date.strftime("%d.%m.%Y") if c.end_date else ""
+        self.pick_create_flow_kind("collection")
 
     @rx.event
     def load_resident_finance(self):
@@ -573,6 +621,8 @@ class FinanceState(AuthState):
                         progress_pct=self._pct(collected, c.target_amount),
                         is_active=c.is_active,
                         status=c.status,
+                        amount_mode=c.amount_mode,
+                        instructions=c.instructions,
                         end_date_fmt=_fmt_date(c.end_date),
                         my_contribution=my_total,
                         my_contribution_fmt=_rub(my_total),

@@ -70,6 +70,20 @@ class AuthState(rx.State):
     # пустого дома — так же, как в сценарии спеки «Дом создан — зовём соседей».
     show_invite_after_create: bool = False
 
+    # --- мастер предложения (F01–F13): резидент предлагает сбор/
+    # инициативу/опрос на модерацию УК. Шаг живёт тут, сами поля формы —
+    # в new_col_*/new_initiative_*/new_poll_* (FinanceState/CommunityState).
+    # kind="" — закрыт (F01 показывается отдельным флагом ниже);
+    # step: 1/2/3 — шаг формы внутри выбранного типа; "submitting"/"success"
+    # — F12/F13.
+    show_create_type_picker: bool = False
+    create_flow_kind: str = ""  # "collection" | "initiative" | "poll"
+    create_flow_step: int = 1
+    create_flow_submitting: bool = False
+    create_flow_done: bool = False
+    # >0 при «Исправить и отправить» (F15) — id заявки, которую правим.
+    create_flow_edit_id: int = 0
+
     # --- экран «Присоединиться» (J01–J03, ручной ввод кода дома): одно
     # поле на 6 символов (3 буквы + 3 цифры), храним уже без пробела —
     # пробел для читаемости добавляется только на отображении (join_code_display).
@@ -357,6 +371,51 @@ class AuthState(rx.State):
         self.display_name = tenant_name
         self.show_invite_after_create = True
         return rx.redirect("/uk")
+
+    # ---------------- мастер предложения F01–F13 ----------------
+
+    @rx.event
+    def open_create_flow(self):
+        self.show_create_type_picker = True
+        self.create_flow_kind = ""
+        self.create_flow_step = 1
+        self.create_flow_done = False
+        self.create_flow_edit_id = 0
+
+    @rx.event
+    def pick_create_flow_kind(self, kind: str):
+        self.show_create_type_picker = False
+        self.create_flow_kind = kind
+        self.create_flow_step = 1
+
+    @rx.event
+    def create_flow_next_step(self):
+        self.create_flow_step += 1
+
+    @rx.event
+    def create_flow_prev_step(self):
+        if self.create_flow_step > 1:
+            self.create_flow_step -= 1
+        else:
+            self.show_create_type_picker = True
+            self.create_flow_kind = ""
+
+    @rx.event
+    def close_create_flow(self):
+        self.show_create_type_picker = False
+        self.create_flow_kind = ""
+        self.create_flow_step = 1
+        self.create_flow_done = False
+        self.create_flow_edit_id = 0
+
+    @rx.event
+    def set_create_flow_dialog_open(self, is_open: bool):
+        if not is_open:
+            self.show_create_type_picker = False
+            self.create_flow_kind = ""
+            self.create_flow_step = 1
+            self.create_flow_done = False
+            self.create_flow_edit_id = 0
 
     @rx.event
     def join_via_code(self):

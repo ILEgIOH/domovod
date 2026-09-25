@@ -11,6 +11,7 @@ from ..state_community import CommunityState
 from ..state_contacts import ContactsState
 from ..state_finance import FinanceState
 from ..state_news import ICON_CHOICES, NewsState
+from ..state_proposals import ProposalsState
 from ..state_uk_admin import UKAdminState
 from ..ui import (
     BRAND_ACTION_TEXT,
@@ -81,6 +82,16 @@ def _identity_card() -> rx.Component:
                 align="start",
             ),
             rx.spacer(),
+            rx.cond(
+                AuthState.is_resident,
+                rx.icon_button(
+                    rx.icon("clipboard-list", size=16),
+                    variant="ghost",
+                    color_scheme="gray",
+                    size="1",
+                    on_click=ProposalsState.open_my_proposals,
+                ),
+            ),
             rx.icon_button(
                 rx.icon("log-out", size=16),
                 variant="ghost",
@@ -287,7 +298,7 @@ def _proposed_collection_card(c) -> rx.Component:
                 color_scheme="red",
                 size="1",
                 flex="1",
-                on_click=FinanceState.reject_collection(c.id),
+                on_click=ProposalsState.open_reject("collection", c.id, c.title),
             ),
             rx.button(
                 "Опубликовать",
@@ -327,9 +338,12 @@ def _published_collection_card(c) -> rx.Component:
             margin_bottom="1rem",
         ),
         rx.text(c.target_fmt, size="8", weight="bold", color=TEXT_PRIMARY),
-        rx.cond(
-            c.end_date_fmt != "",
-            rx.text("до " + c.end_date_fmt, size="2", color="var(--gray-9)", margin_bottom="0.9rem"),
+        rx.text(
+            rx.cond(c.amount_mode == "per_apartment", "с квартиры", "общая цель")
+            + rx.cond(c.end_date_fmt != "", " · до " + c.end_date_fmt, ""),
+            size="2",
+            color="var(--gray-9)",
+            margin_bottom="0.9rem",
         ),
         progress_bar(c.progress_pct),
         rx.hstack(
@@ -339,7 +353,20 @@ def _published_collection_card(c) -> rx.Component:
             margin_top="0.4rem",
             margin_bottom="1rem",
         ),
-        rx.cond(c.description != "", rx.text(c.description, size="2", color="var(--gray-11)", margin_bottom="1.2rem")),
+        rx.cond(c.description != "", rx.text(c.description, size="2", color="var(--gray-11)", margin_bottom="0.8rem")),
+        rx.cond(
+            c.instructions != "",
+            rx.box(
+                rx.text("Как передать деньги", size="2", weight="bold", margin_bottom="0.1rem"),
+                rx.text(c.instructions, size="2", color="var(--gray-9)"),
+                background="white",
+                border="1px solid var(--gray-4)",
+                border_radius="14px",
+                padding="0.8rem 1rem",
+                margin_bottom="1.2rem",
+                width="100%",
+            ),
+        ),
         rx.cond(
             AuthState.is_uk,
             rx.button(
@@ -389,10 +416,11 @@ def _published_collection_card(c) -> rx.Component:
 
 
 def _collection_compact_card(c) -> rx.Component:
-    subtitle = rx.cond(
-        c.end_date_fmt != "",
-        "по " + c.target_fmt + " до " + c.end_date_fmt,
-        "по " + c.target_fmt,
+    subtitle = (
+        c.target_fmt
+        + " "
+        + rx.cond(c.amount_mode == "per_apartment", "с квартиры", "общая цель")
+        + rx.cond(c.end_date_fmt != "", " · до " + c.end_date_fmt, "")
     )
     return rx.box(
         rx.text(c.title, weight="bold", size="2"),
@@ -535,48 +563,6 @@ def _collections_section() -> rx.Component:
             align="center",
         ),
         error_text(FinanceState.pay_error),
-        rx.cond(
-            AuthState.is_resident,
-            section_card(
-                error_text(FinanceState.propose_error),
-                rx.text("Предложить сбор", weight="bold", size="2", margin_bottom="0.4rem"),
-                rx.input(
-                    value=FinanceState.propose_col_title,
-                    on_change=FinanceState.set_propose_col_title,
-                    placeholder="Название",
-                    width="100%",
-                    margin_bottom="0.5rem",
-                ),
-                rx.text_area(
-                    placeholder="Описание",
-                    value=FinanceState.propose_col_description,
-                    on_change=FinanceState.set_propose_col_description,
-                    width="100%",
-                    margin_bottom="0.5rem",
-                    rows="2",
-                ),
-                rx.hstack(
-                    rx.input(
-                        placeholder="Сумма, ₽",
-                        value=FinanceState.propose_col_amount,
-                        on_change=FinanceState.set_propose_col_amount,
-                    ),
-                    rx.input(
-                        placeholder="До (дд.мм.гггг)",
-                        value=FinanceState.propose_col_end_date,
-                        on_change=FinanceState.set_propose_col_end_date,
-                    ),
-                    width="100%",
-                ),
-                rx.button(
-                    "Предложить",
-                    width="100%",
-                    margin_top="0.6rem",
-                    variant="soft",
-                    on_click=FinanceState.propose_collection,
-                ),
-            ),
-        ),
         rx.cond(
             items.length() == 0,
             rx.text("Сборов пока нет", size="2", color="var(--gray-9)"),
@@ -745,21 +731,91 @@ def _initiative_detail_dialog() -> rx.Component:
     )
 
 
+def _proposed_initiative_card(i) -> rx.Component:
+    return section_card(
+        rx.hstack(
+            rx.badge("Предложено", color_scheme="amber"),
+            rx.cond(i.proposed_by_name != "", rx.text(i.proposed_by_name, size="1", color="var(--gray-9)")),
+            spacing="2",
+            align="center",
+        ),
+        rx.text(i.title, weight="bold", size="3", margin_top="0.3rem"),
+        rx.cond(i.description != "", rx.text(i.description, size="2", color="var(--gray-11)")),
+        rx.hstack(
+            rx.button(
+                "Отклонить",
+                variant="soft",
+                color_scheme="red",
+                size="1",
+                flex="1",
+                on_click=ProposalsState.open_reject("initiative", i.id, i.title),
+            ),
+            rx.button("Опубликовать", size="1", flex="1", on_click=CommunityState.publish_initiative(i.id)),
+            width="100%",
+            margin_top="0.5rem",
+        ),
+    )
+
+
+def _proposed_initiatives_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Предложенные инициативы"),
+            rx.foreach(CommunityState.proposed_initiatives, _proposed_initiative_card),
+            rx.button(
+                "Закрыть",
+                variant="soft",
+                width="100%",
+                margin_top="0.2rem",
+                on_click=CommunityState.close_proposed_initiatives_dialog,
+            ),
+            max_width="380px",
+        ),
+        open=CommunityState.show_proposed_initiatives_dialog,
+        on_open_change=CommunityState.set_proposed_initiatives_dialog_open,
+    )
+
+
 def _initiatives_block() -> rx.Component:
     return rx.vstack(
         rx.hstack(
-            rx.heading("Инициативы", size="4"),
-            rx.icon("chevron-right", size=16, color="var(--gray-9)"),
-            spacing="1",
+            rx.hstack(
+                rx.heading("Инициативы", size="4"),
+                rx.icon("chevron-right", size=16, color="var(--gray-9)"),
+                spacing="1",
+                align="center",
+                cursor="pointer",
+                on_click=CommunityState.open_initiatives_list,
+            ),
+            rx.spacer(),
+            rx.cond(
+                AuthState.is_uk,
+                rx.cond(
+                    CommunityState.proposed_initiatives.length() > 0,
+                    rx.button(
+                        rx.badge(
+                            CommunityState.proposed_initiatives.length().to_string(),
+                            color_scheme="red",
+                            variant="solid",
+                            radius="full",
+                        ),
+                        "Предложенных",
+                        size="1",
+                        variant="ghost",
+                        color_scheme="gray",
+                        on_click=CommunityState.open_proposed_initiatives_dialog,
+                    ),
+                ),
+            ),
+            width="100%",
             align="center",
-            cursor="pointer",
-            on_click=CommunityState.open_initiatives_list,
         ),
         rx.cond(
             CommunityState.initiatives.length() == 0,
             rx.text("Инициатив пока нет", size="2", color="var(--gray-9)"),
             rx.foreach(CommunityState.initiatives, _initiative_card),
         ),
+        _proposed_initiatives_dialog(),
         width="100%",
         spacing="2",
     )
@@ -1021,21 +1077,97 @@ def _poll_detail_dialog() -> rx.Component:
     )
 
 
+def _proposed_poll_card(p) -> rx.Component:
+    return section_card(
+        rx.hstack(
+            rx.badge("Предложено", color_scheme="amber"),
+            rx.cond(p.proposed_by_name != "", rx.text(p.proposed_by_name, size="1", color="var(--gray-9)")),
+            spacing="2",
+            align="center",
+        ),
+        rx.text(p.title, weight="bold", size="3", margin_top="0.3rem"),
+        rx.cond(p.description != "", rx.text(p.description, size="2", color="var(--gray-11)")),
+        rx.vstack(
+            rx.foreach(p.options, lambda o: rx.text("· " + o.label, size="2", color="var(--gray-9)")),
+            spacing="0",
+            margin_top="0.3rem",
+            align="start",
+        ),
+        rx.hstack(
+            rx.button(
+                "Отклонить",
+                variant="soft",
+                color_scheme="red",
+                size="1",
+                flex="1",
+                on_click=ProposalsState.open_reject("poll", p.id, p.title),
+            ),
+            rx.button("Опубликовать", size="1", flex="1", on_click=CommunityState.publish_poll(p.id)),
+            width="100%",
+            margin_top="0.5rem",
+        ),
+    )
+
+
+def _proposed_polls_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Предложенные опросы"),
+            rx.foreach(CommunityState.proposed_polls, _proposed_poll_card),
+            rx.button(
+                "Закрыть",
+                variant="soft",
+                width="100%",
+                margin_top="0.2rem",
+                on_click=CommunityState.close_proposed_polls_dialog,
+            ),
+            max_width="380px",
+        ),
+        open=CommunityState.show_proposed_polls_dialog,
+        on_open_change=CommunityState.set_proposed_polls_dialog_open,
+    )
+
+
 def _polls_block() -> rx.Component:
     return rx.vstack(
         rx.hstack(
-            rx.heading("Опросы", size="4"),
-            rx.icon("chevron-right", size=16, color="var(--gray-9)"),
-            spacing="1",
+            rx.hstack(
+                rx.heading("Опросы", size="4"),
+                rx.icon("chevron-right", size=16, color="var(--gray-9)"),
+                spacing="1",
+                align="center",
+                cursor="pointer",
+                on_click=CommunityState.open_polls_list,
+            ),
+            rx.spacer(),
+            rx.cond(
+                AuthState.is_uk,
+                rx.cond(
+                    CommunityState.proposed_polls.length() > 0,
+                    rx.button(
+                        rx.badge(
+                            CommunityState.proposed_polls.length().to_string(),
+                            color_scheme="red",
+                            variant="solid",
+                            radius="full",
+                        ),
+                        "Предложенных",
+                        size="1",
+                        variant="ghost",
+                        color_scheme="gray",
+                        on_click=CommunityState.open_proposed_polls_dialog,
+                    ),
+                ),
+            ),
+            width="100%",
             align="center",
-            cursor="pointer",
-            on_click=CommunityState.open_polls_list,
         ),
         rx.cond(
             CommunityState.polls.length() == 0,
             rx.text("Опросов пока нет", size="2", color="var(--gray-9)"),
             rx.foreach(CommunityState.polls, _poll_card),
         ),
+        _proposed_polls_dialog(),
         width="100%",
         spacing="2",
     )
@@ -1249,6 +1381,41 @@ def _create_section_pill() -> rx.Component:
     )
 
 
+def _create_section_resident() -> rx.Component:
+    """F01: у жителя «+Создать» открывает мастер предложения с
+    модерацией, а не мгновенное создание, как у УК."""
+    return rx.hstack(
+        rx.heading("Создать", size="4"),
+        rx.spacer(),
+        rx.box(
+            rx.icon("plus", size=18, color="var(--accent-9)"),
+            width="44px",
+            height="44px",
+            border_radius="999px",
+            background="var(--gray-4)",
+            display="flex",
+            align_items="center",
+            justify_content="center",
+            cursor="pointer",
+            on_click=AuthState.open_create_flow,
+        ),
+        width="100%",
+        align="center",
+    )
+
+
+def _create_section_pill_resident() -> rx.Component:
+    return rx.box(
+        rx.text("+ Создать", weight="bold", text_align="center", color=BRAND_ACTION_TEXT),
+        width="100%",
+        background=BRAND_PURPLE_TINT,
+        border_radius="999px",
+        padding="0.9rem",
+        cursor="pointer",
+        on_click=AuthState.open_create_flow,
+    )
+
+
 def _empty_home_hero() -> rx.Component:
     """H03: полностью пустой дом — крупная плашка вместо ленты объявлений."""
     return rx.vstack(
@@ -1350,10 +1517,11 @@ def _collections_list_dialog() -> rx.Component:
     )
 
     def _row(c, completed: bool):
-        subtitle = rx.cond(
-            c.end_date_fmt != "",
-            "до " + c.end_date_fmt + " · " + c.target_fmt,
-            c.target_fmt,
+        subtitle = (
+            c.target_fmt
+            + " "
+            + rx.cond(c.amount_mode == "per_apartment", "с квартиры", "общая цель")
+            + rx.cond(c.end_date_fmt != "", " · до " + c.end_date_fmt, "")
         )
         return _list_row(c.title, subtitle, completed=completed, on_click=FinanceState.open_collection(c.id))
 
@@ -1699,6 +1867,633 @@ def _invite_after_create_modal() -> rx.Component:
     )
 
 
+# ======================================================== Мастер F01–F16 ===
+
+
+def _create_type_row(icon: str, title: str, subtitle: str, kind: str) -> rx.Component:
+    return rx.hstack(
+        rx.icon(icon, size=20, color=BRAND_ACTION_TEXT),
+        rx.vstack(
+            rx.text(title, size="3", weight="bold"),
+            rx.text(subtitle, size="2", color="var(--gray-9)"),
+            spacing="0",
+            align="start",
+        ),
+        rx.spacer(),
+        rx.icon("chevron-right", size=18, color="var(--gray-9)"),
+        width="100%",
+        align="center",
+        spacing="3",
+        background="white",
+        border_radius="16px",
+        padding="0.9rem 1rem",
+        cursor="pointer",
+        on_click=AuthState.pick_create_flow_kind(kind),
+    )
+
+
+def _create_type_picker() -> rx.Component:
+    """F01: «Что хотите предложить?» — открывается вместо мгновенного
+    создания, когда предложение жителя идёт на модерацию УК."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Создать", style={"display": "none"}),
+            rx.vstack(
+                rx.hstack(
+                    rx.heading("Что хотите предложить?", size="5", weight="bold"),
+                    rx.spacer(),
+                    rx.icon(
+                        "x",
+                        size=18,
+                        color="var(--gray-9)",
+                        cursor="pointer",
+                        on_click=AuthState.close_create_flow,
+                    ),
+                    width="100%",
+                    align="center",
+                    margin_bottom="0.3rem",
+                ),
+                rx.text(
+                    "Администратор проверит предложение перед публикацией.",
+                    size="2",
+                    color="var(--gray-9)",
+                    margin_bottom="1rem",
+                ),
+                _create_type_row("wallet", "Сбор", "Собрать деньги на общее дело", "collection"),
+                _create_type_row("users", "Инициативу", "Сделать что-то вместе", "initiative"),
+                _create_type_row("bar-chart-2", "Опрос", "Узнать мнение соседей", "poll"),
+                width="100%",
+                spacing="2",
+                align="start",
+            ),
+            max_width=MAX_WIDTH,
+        ),
+        open=AuthState.show_create_type_picker,
+        on_open_change=AuthState.set_create_flow_dialog_open,
+    )
+
+
+def _wizard_header(heading: str) -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.icon(
+                "chevron-left",
+                size=22,
+                color="var(--gray-11)",
+                cursor="pointer",
+                on_click=AuthState.create_flow_prev_step,
+            ),
+            rx.spacer(),
+            rx.hstack(
+                rx.icon("x", size=16, color="var(--gray-11)"),
+                rx.text("Закрыть", size="2", weight="medium"),
+                spacing="1",
+                align="center",
+                cursor="pointer",
+                on_click=AuthState.close_create_flow,
+            ),
+            width="100%",
+            align="center",
+        ),
+        rx.heading(heading, size="6", weight="bold", margin_top="0.8rem"),
+        rx.text("Предложение для администратора", size="2", color="var(--gray-9)", margin_bottom="1rem"),
+        width="100%",
+        align="start",
+        spacing="1",
+    )
+
+
+def _mode_toggle(value: rx.Var, a_key: str, a_label: str, b_key: str, b_label: str, on_change) -> rx.Component:
+    def _btn(key: str, label: str) -> rx.Component:
+        selected = value == key
+        return rx.box(
+            rx.text(label, size="2", weight="medium", color=rx.cond(selected, BRAND_ACTION_TEXT, "var(--gray-9)")),
+            on_click=on_change(key),
+            cursor="pointer",
+            flex="1",
+            text_align="center",
+            padding="0.6rem",
+            border_radius="999px",
+            background=rx.cond(selected, BRAND_PURPLE_TINT, "var(--gray-3)"),
+        )
+
+    return rx.hstack(_btn(a_key, a_label), _btn(b_key, b_label), spacing="2", width="100%", margin_bottom="0.8rem")
+
+
+def _wizard_next_button(label: str, enabled: rx.Var, on_click) -> rx.Component:
+    return rx.button(
+        label,
+        width="100%",
+        size="3",
+        radius="full",
+        disabled=enabled == False,  # noqa: E712
+        style=rx.cond(
+            enabled,
+            {"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            {"background": "var(--gray-4)", "color": "var(--gray-9)"},
+        ),
+        on_click=on_click,
+    )
+
+
+def _collection_step1() -> rx.Component:
+    """F02."""
+    return rx.vstack(
+        _wizard_header("Новый сбор"),
+        field_label("Название"),
+        rx.input(
+            value=FinanceState.propose_col_title,
+            on_change=FinanceState.set_propose_col_title,
+            placeholder="Покраска лифта",
+            width="100%",
+            margin_bottom="0.9rem",
+            auto_focus=True,
+        ),
+        field_label("Как считаем сумму"),
+        _mode_toggle(
+            FinanceState.propose_col_mode,
+            "per_apartment", "С квартиры",
+            "total", "Общая цель",
+            FinanceState.set_propose_col_mode,
+        ),
+        field_label(rx.cond(FinanceState.propose_col_mode == "per_apartment", "Сумма, ₽", "Общая цель, ₽")),
+        rx.input(
+            value=FinanceState.propose_col_amount,
+            on_change=FinanceState.set_propose_col_amount,
+            placeholder="1000",
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Срок сбора"),
+        rx.input(
+            value=FinanceState.propose_col_end_date,
+            on_change=FinanceState.set_propose_col_end_date,
+            placeholder="дд.мм.гггг",
+            width="100%",
+            margin_bottom="1.2rem",
+        ),
+        rx.spacer(),
+        _wizard_next_button("Далее", FinanceState.propose_col_step1_valid, AuthState.create_flow_next_step),
+        width="100%",
+        min_height="480px",
+        align="start",
+    )
+
+
+def _collection_step2() -> rx.Component:
+    """F03."""
+    return rx.vstack(
+        _wizard_header("Новый сбор"),
+        error_text(FinanceState.propose_error),
+        field_label("Описание"),
+        rx.text_area(
+            value=FinanceState.propose_col_description,
+            on_change=FinanceState.set_propose_col_description,
+            placeholder="Обновим стены и двери лифта. Материалы и работу посчитали.",
+            width="100%",
+            rows="4",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Инструкция · необязательно"),
+        rx.text_area(
+            value=FinanceState.propose_col_instructions,
+            on_change=FinanceState.set_propose_col_instructions,
+            placeholder="Свяжитесь с Татьяной, квартира 12",
+            width="100%",
+            rows="2",
+            margin_bottom="0.9rem",
+        ),
+        rx.text("Сумма не списывается в приложении.", size="2", color="var(--gray-9)"),
+        rx.spacer(),
+        rx.button(
+            "Отправить администратору",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_NEON, "color": BRAND_ACTION_TEXT},
+            on_click=FinanceState.propose_collection,
+        ),
+        rx.text(
+            "Предложение увидит администратор дома.",
+            size="1",
+            color="var(--gray-9)",
+            text_align="center",
+            width="100%",
+            margin_top="0.4rem",
+        ),
+        width="100%",
+        min_height="480px",
+        align="start",
+    )
+
+
+def _initiative_step1() -> rx.Component:
+    """F05."""
+    return rx.vstack(
+        _wizard_header("Новая инициатива"),
+        field_label("Название"),
+        rx.input(
+            value=CommunityState.propose_initiative_title,
+            on_change=CommunityState.set_propose_initiative_title,
+            placeholder="Субботник",
+            width="100%",
+            margin_bottom="0.9rem",
+            auto_focus=True,
+        ),
+        field_label("Дата и время"),
+        rx.input(
+            value=CommunityState.propose_initiative_event_date,
+            on_change=CommunityState.set_propose_initiative_event_date,
+            placeholder="3 октября 2026 · 10:00",
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Сколько нужно участников"),
+        rx.input(
+            value=CommunityState.propose_initiative_needed,
+            on_change=CommunityState.set_propose_initiative_needed,
+            placeholder="5",
+            width="100%",
+            margin_bottom="1.2rem",
+        ),
+        rx.spacer(),
+        _wizard_next_button(
+            "Далее", CommunityState.propose_initiative_step1_valid, AuthState.create_flow_next_step
+        ),
+        width="100%",
+        min_height="480px",
+        align="start",
+    )
+
+
+def _initiative_step2() -> rx.Component:
+    """F06."""
+    return rx.vstack(
+        _wizard_header("Новая инициатива"),
+        error_text(CommunityState.propose_initiative_error),
+        field_label("Описание"),
+        rx.text_area(
+            value=CommunityState.propose_initiative_description,
+            on_change=CommunityState.set_propose_initiative_description,
+            placeholder="Укажите место встречи, что взять с собой и сколько времени займёт.",
+            width="100%",
+            rows="5",
+            margin_bottom="1.2rem",
+        ),
+        rx.spacer(),
+        rx.button(
+            "Отправить администратору",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_NEON, "color": BRAND_ACTION_TEXT},
+            on_click=CommunityState.propose_initiative,
+        ),
+        rx.text(
+            "Предложение увидит администратор дома.",
+            size="1",
+            color="var(--gray-9)",
+            text_align="center",
+            width="100%",
+            margin_top="0.4rem",
+        ),
+        width="100%",
+        min_height="480px",
+        align="start",
+    )
+
+
+def _propose_poll_option_input(label, idx) -> rx.Component:
+    return rx.hstack(
+        rx.input(
+            value=label,
+            on_change=lambda v: CommunityState.set_propose_poll_option(idx, v),
+            placeholder="Вариант",
+            width="100%",
+        ),
+        rx.cond(
+            CommunityState.propose_poll_options.length() > 2,
+            rx.icon(
+                "x",
+                size=16,
+                color="var(--gray-9)",
+                cursor="pointer",
+                on_click=CommunityState.remove_propose_poll_option(idx),
+            ),
+        ),
+        align="center",
+        spacing="2",
+        width="100%",
+        margin_bottom="0.6rem",
+    )
+
+
+def _poll_step1() -> rx.Component:
+    """F07/F08 объединены — новые варианты появляются сразу на этом же
+    шаге, без отдельного экрана «Варианты ответа»."""
+    return rx.vstack(
+        _wizard_header("Новый опрос"),
+        field_label("Вопрос"),
+        rx.input(
+            value=CommunityState.propose_poll_title,
+            on_change=CommunityState.set_propose_poll_title,
+            placeholder="Нужна ли камера у входа?",
+            width="100%",
+            margin_bottom="0.9rem",
+            auto_focus=True,
+        ),
+        field_label("Варианты ответа"),
+        rx.foreach(CommunityState.propose_poll_options, _propose_poll_option_input),
+        rx.cond(
+            CommunityState.propose_poll_options.length() < 10,
+            rx.box(
+                rx.text("+ Добавить вариант", weight="bold", text_align="center", color=BRAND_ACTION_TEXT, size="2"),
+                width="100%",
+                background=BRAND_PURPLE_TINT,
+                border_radius="999px",
+                padding="0.6rem",
+                cursor="pointer",
+                on_click=CommunityState.add_propose_poll_option,
+                margin_bottom="1.2rem",
+            ),
+        ),
+        rx.spacer(),
+        _wizard_next_button("Далее", CommunityState.propose_poll_step1_valid, AuthState.create_flow_next_step),
+        width="100%",
+        min_height="480px",
+        align="start",
+    )
+
+
+def _poll_step2() -> rx.Component:
+    """F09."""
+    return rx.vstack(
+        _wizard_header("Новый опрос"),
+        error_text(CommunityState.propose_poll_error),
+        field_label("Описание"),
+        rx.text_area(
+            value=CommunityState.propose_poll_description,
+            on_change=CommunityState.set_propose_poll_description,
+            placeholder="Ориентировочно 20 000 ₽ на весь подъезд.",
+            width="100%",
+            rows="3",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Опрос до"),
+        rx.input(
+            value=CommunityState.propose_poll_end_date,
+            on_change=CommunityState.set_propose_poll_end_date,
+            placeholder="дд.мм.гггг",
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        rx.hstack(
+            rx.text("Несколько ответов", size="2", weight="medium"),
+            rx.spacer(),
+            rx.switch(
+                checked=CommunityState.propose_poll_allow_multiple,
+                on_change=CommunityState.set_propose_poll_allow_multiple,
+            ),
+            width="100%",
+            align="center",
+            margin_bottom="0.7rem",
+        ),
+        rx.hstack(
+            rx.text("Можно менять голос", size="2", weight="medium"),
+            rx.spacer(),
+            rx.switch(
+                checked=CommunityState.propose_poll_allow_vote_change,
+                on_change=CommunityState.set_propose_poll_allow_vote_change,
+            ),
+            width="100%",
+            align="center",
+            margin_bottom="1.2rem",
+        ),
+        rx.spacer(),
+        rx.button(
+            "Отправить администратору",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_NEON, "color": BRAND_ACTION_TEXT},
+            on_click=CommunityState.propose_poll,
+        ),
+        rx.text(
+            "Предложение увидит администратор дома.",
+            size="1",
+            color="var(--gray-9)",
+            text_align="center",
+            width="100%",
+            margin_top="0.4rem",
+        ),
+        width="100%",
+        min_height="480px",
+        align="start",
+    )
+
+
+def _create_flow_success() -> rx.Component:
+    """F13."""
+    return rx.vstack(
+        rx.hstack(
+            rx.spacer(),
+            rx.hstack(
+                rx.icon("x", size=16, color="var(--gray-11)"),
+                rx.text("Закрыть", size="2", weight="medium"),
+                spacing="1",
+                align="center",
+                cursor="pointer",
+                on_click=AuthState.close_create_flow,
+            ),
+            width="100%",
+        ),
+        rx.spacer(),
+        rx.center(
+            rx.box(
+                rx.icon("check", size=32, color=BRAND_PURPLE),
+                background=BRAND_PURPLE_TINT,
+                border_radius="20px",
+                padding="1.4rem",
+            ),
+            width="100%",
+            padding_top="1.5rem",
+            padding_bottom="1.5rem",
+        ),
+        rx.heading("Отправлено администратору", size="6", weight="bold", text_align="center", width="100%"),
+        rx.text(
+            "Когда предложение проверят, его статус появится в вашем меню.",
+            size="2",
+            color="var(--gray-9)",
+            text_align="center",
+            width="100%",
+            margin_top="0.4rem",
+        ),
+        rx.spacer(),
+        rx.button(
+            "Мои предложения",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=[AuthState.close_create_flow, ProposalsState.open_my_proposals],
+        ),
+        width="100%",
+        min_height="480px",
+        align="start",
+    )
+
+
+def _create_flow_dialog() -> rx.Component:
+    kind = AuthState.create_flow_kind
+    step = AuthState.create_flow_step
+    body = rx.cond(
+        AuthState.create_flow_done,
+        _create_flow_success(),
+        rx.match(
+            kind,
+            ("collection", rx.cond(step == 1, _collection_step1(), _collection_step2())),
+            ("initiative", rx.cond(step == 1, _initiative_step1(), _initiative_step2())),
+            ("poll", rx.cond(step == 1, _poll_step1(), _poll_step2())),
+            rx.fragment(),
+        ),
+    )
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Предложение", style={"display": "none"}),
+            body,
+            max_width=MAX_WIDTH,
+            min_height="520px",
+        ),
+        open=kind != "",
+        on_open_change=AuthState.set_create_flow_dialog_open,
+    )
+
+
+def _reject_reason_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Отклонить предложение"),
+            rx.text(ProposalsState.reject_target_title, size="2", weight="bold", margin_bottom="0.6rem"),
+            field_label("Причина"),
+            rx.text_area(
+                value=ProposalsState.reject_reason_input,
+                on_change=ProposalsState.set_reject_reason_input,
+                placeholder="Сначала согласуем смету с УК.",
+                width="100%",
+                rows="3",
+                margin_bottom="0.8rem",
+            ),
+            rx.hstack(
+                rx.button(
+                    "Отмена",
+                    variant="soft",
+                    flex="1",
+                    on_click=ProposalsState.close_reject,
+                ),
+                rx.button(
+                    "Отклонить",
+                    color_scheme="red",
+                    flex="1",
+                    on_click=ProposalsState.confirm_reject,
+                ),
+                width="100%",
+            ),
+            max_width="360px",
+        ),
+        open=ProposalsState.reject_target_kind != "",
+        on_open_change=ProposalsState.set_reject_dialog_open,
+    )
+
+
+def _my_proposal_card(item) -> rx.Component:
+    status_badge = rx.match(
+        item.status,
+        ("proposed", rx.box(
+            rx.text("На проверке", size="1", weight="medium", color=BRAND_ACTION_TEXT),
+            background=BRAND_PURPLE_TINT, border_radius="999px", padding="0.2rem 0.7rem", width="fit-content",
+        )),
+        ("rejected", rx.box(
+            rx.text("Отклонено", size="1", weight="medium", color="var(--red-11)"),
+            background="var(--red-3)", border_radius="999px", padding="0.2rem 0.7rem", width="fit-content",
+        )),
+        rx.box(
+            rx.text("Опубликовано", size="1", weight="medium", color="var(--green-11)"),
+            background="var(--green-3)", border_radius="999px", padding="0.2rem 0.7rem", width="fit-content",
+        ),
+    )
+    action = rx.match(
+        item.status,
+        ("proposed", rx.button(
+            "Отозвать предложение",
+            width="100%",
+            variant="soft",
+            color_scheme="gray",
+            margin_top="0.6rem",
+            on_click=ProposalsState.withdraw_proposal(item.kind, item.id),
+        )),
+        ("rejected", rx.vstack(
+            rx.text(item.rejection_reason, size="2", color="var(--gray-11)", margin_top="0.4rem"),
+            rx.button(
+                "Исправить и отправить",
+                width="100%",
+                style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+                margin_top="0.4rem",
+                on_click=ProposalsState.start_edit_rejected(item.kind, item.id),
+            ),
+            width="100%",
+            spacing="1",
+            align="start",
+        )),
+        rx.fragment(),
+    )
+    return rx.box(
+        rx.text(item.title, weight="bold", size="3"),
+        rx.text(item.kind_label + " · отправлено " + item.submitted_fmt, size="2", color="var(--gray-9)", margin_bottom="0.4rem"),
+        status_badge,
+        action,
+        width="100%",
+        background="white",
+        border="1px solid var(--gray-4)",
+        border_radius="16px",
+        padding="0.9rem 1rem",
+        margin_bottom="0.7rem",
+    )
+
+
+def _my_proposals_dialog() -> rx.Component:
+    """F14–F16: «Мои предложения»."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Мои предложения", style={"display": "none"}),
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("x", size=16, color="var(--gray-11)"),
+                    rx.text("Закрыть", size="2", weight="medium"),
+                    spacing="1",
+                    align="center",
+                    cursor="pointer",
+                    on_click=ProposalsState.close_my_proposals,
+                    width="fit-content",
+                    margin_bottom="1rem",
+                ),
+                rx.heading("Мои предложения", size="6", weight="bold", margin_bottom="0.1rem"),
+                rx.text("Сохраняем всё, что вы отправили", size="2", color="var(--gray-9)", margin_bottom="1rem"),
+                rx.cond(
+                    ProposalsState.my_proposals.length() == 0,
+                    rx.text("Предложений пока нет", size="2", color="var(--gray-9)"),
+                    rx.foreach(ProposalsState.my_proposals, _my_proposal_card),
+                ),
+                width="100%",
+                align="start",
+            ),
+            max_width=MAX_WIDTH,
+            min_height="480px",
+        ),
+        open=ProposalsState.show_my_proposals,
+        on_open_change=ProposalsState.set_my_proposals_open,
+    )
+
+
 def home_tab() -> rx.Component:
     collections_count = rx.cond(
         AuthState.is_uk,
@@ -1710,14 +2505,24 @@ def home_tab() -> rx.Component:
         FinanceState.home_active_debts.length() + FinanceState.home_paid_debts.length(),
         FinanceState.active_my_debts.length() + FinanceState.paid_my_debts.length(),
     )
+    proposed_count = rx.cond(
+        AuthState.is_uk,
+        FinanceState.home_proposed_collections.length()
+        + CommunityState.proposed_initiatives.length()
+        + CommunityState.proposed_polls.length(),
+        0,
+    )
     # H03: пока в доме вообще ничего нет — крупная плашка-иллюстрация вместо
-    # пяти отдельных «пока нет», как в заполненном состоянии (H01).
+    # пяти отдельных «пока нет», как в заполненном состоянии (H01). Если
+    # есть предложения на модерации, дом не считаем пустым — иначе у УК
+    # негде увидеть бейдж «Предложенных» (он живёт в заполненном варианте).
     home_is_empty = (
         (NewsState.news_items.length() == 0)
         & (collections_count == 0)
         & (CommunityState.initiatives.length() == 0)
         & (CommunityState.polls.length() == 0)
         & (debts_count == 0)
+        & (proposed_count == 0)
     )
     return rx.vstack(
         rx.cond(AuthState.is_uk, _invite_after_create_modal()),
@@ -1726,6 +2531,10 @@ def home_tab() -> rx.Component:
         _initiative_detail_dialog(),
         _polls_list_dialog(),
         _poll_detail_dialog(),
+        rx.cond(AuthState.is_resident, _create_type_picker()),
+        rx.cond(AuthState.is_resident, _create_flow_dialog()),
+        rx.cond(AuthState.is_resident, _my_proposals_dialog()),
+        rx.cond(AuthState.is_uk, _reject_reason_dialog()),
         _identity_card(),
         _home_header(),
         rx.cond(
@@ -1737,7 +2546,7 @@ def home_tab() -> rx.Component:
                     _empty_section_row("Сборов пока нет", "Предложите то, что нужно дому"),
                     _empty_section_row("Инициатив пока нет", "Предложите то, что нужно дому"),
                     _empty_section_row("Опросов пока нет", "Предложите то, что нужно дому"),
-                    rx.cond(AuthState.is_uk, _create_section_pill()),
+                    rx.cond(AuthState.is_uk, _create_section_pill(), _create_section_pill_resident()),
                     width="100%",
                     spacing="3",
                 ),
@@ -1747,7 +2556,7 @@ def home_tab() -> rx.Component:
                     _initiatives_block(),
                     _polls_block(),
                     _debts_block(),
-                    rx.cond(AuthState.is_uk, _create_section()),
+                    rx.cond(AuthState.is_uk, _create_section(), _create_section_resident()),
                     width="100%",
                     spacing="4",
                 ),
