@@ -159,7 +159,8 @@ class InitiativeVote(SQLModel, table=True):
 
 
 class Poll(SQLModel, table=True):
-    """Опрос среди жителей подъезда (например, «камера на домофон»)."""
+    """Опрос среди жителей подъезда с вариантами ответа (макет Q01–Q06):
+    один голос на жителя по умолчанию, либо несколько — если allow_multiple."""
 
     id: Optional[int] = Field(default=None, primary_key=True)
     entrance_id: int = Field(index=True)
@@ -167,15 +168,28 @@ class Poll(SQLModel, table=True):
     title: str
     description: str = ""
     author_name: str = ""
+    end_date: Optional[datetime] = None
+    allow_multiple: bool = False
     is_active: bool = True
     created_at: datetime = Field(default_factory=now_utc)
 
 
-class PollVote(SQLModel, table=True):
-    """Голос «я за» жителя по опросу."""
+class PollOption(SQLModel, table=True):
+    """Вариант ответа опроса («Да, установить» / «Нет, не нужно»)."""
 
     id: Optional[int] = Field(default=None, primary_key=True)
     poll_id: int = Field(foreign_key="poll.id", index=True)
+    label: str
+    order: int = 0
+
+
+class PollVote(SQLModel, table=True):
+    """Голос жителя за конкретный вариант опроса. При allow_multiple=False
+    у жителя может быть только одна такая запись на poll_id."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    poll_id: int = Field(foreign_key="poll.id", index=True)
+    option_id: int = Field(foreign_key="polloption.id", index=True)
     resident_id: int = Field(index=True)
     created_at: datetime = Field(default_factory=now_utc)
 

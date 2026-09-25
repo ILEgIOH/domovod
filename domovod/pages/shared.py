@@ -766,37 +766,23 @@ def _initiatives_block() -> rx.Component:
 
 
 def _poll_card(p) -> rx.Component:
+    """Компактная карточка на «Дом» — голосование теперь по вариантам,
+    поэтому карточка только открывает детальную I01-подобную Q01."""
     return section_card(
         rx.hstack(
             rx.vstack(
                 rx.text(p.title, weight="bold", size="2"),
-                rx.cond(
-                    p.description != "",
-                    rx.text(p.description, size="1", color="var(--gray-9)"),
-                ),
+                rx.text(p.total_voters.to_string() + " голосов", size="1", color="var(--gray-9)"),
                 align="start",
                 spacing="0",
             ),
             rx.spacer(),
-            rx.vstack(
-                rx.text(p.votes.to_string() + " чел. одобрили", size="1", color="var(--gray-9)"),
-                rx.cond(
-                    AuthState.is_resident,
-                    rx.button(
-                        rx.cond(p.i_voted, "Я не за", "Я за!"),
-                        size="1",
-                        radius="full",
-                        variant="solid",
-                        color_scheme=rx.cond(p.i_voted, "gray", "lime"),
-                        on_click=CommunityState.toggle_poll_vote(p.id),
-                    ),
-                ),
-                align="end",
-                spacing="1",
-            ),
+            rx.icon("chevron-right", size=16, color="var(--gray-9)"),
             width="100%",
-            align="start",
+            align="center",
         ),
+        cursor="pointer",
+        on_click=CommunityState.open_poll(p.id),
     )
 
 
@@ -816,6 +802,46 @@ def _poll_form() -> rx.Component:
             width="100%",
             rows="2",
         ),
+        field_label("Варианты ответа"),
+        rx.input(
+            value=CommunityState.new_poll_option_1,
+            on_change=CommunityState.set_new_poll_option_1,
+            placeholder="Да, установить",
+            width="100%",
+        ),
+        rx.input(
+            value=CommunityState.new_poll_option_2,
+            on_change=CommunityState.set_new_poll_option_2,
+            placeholder="Нет, не нужно",
+            width="100%",
+        ),
+        rx.input(
+            value=CommunityState.new_poll_option_3,
+            on_change=CommunityState.set_new_poll_option_3,
+            placeholder="Ещё вариант (необязательно)",
+            width="100%",
+        ),
+        rx.input(
+            value=CommunityState.new_poll_option_4,
+            on_change=CommunityState.set_new_poll_option_4,
+            placeholder="Ещё вариант (необязательно)",
+            width="100%",
+        ),
+        rx.hstack(
+            rx.checkbox(
+                checked=CommunityState.new_poll_allow_multiple,
+                on_change=CommunityState.set_new_poll_allow_multiple,
+            ),
+            rx.text("Можно выбрать несколько вариантов", size="2"),
+            align="center",
+            spacing="2",
+        ),
+        rx.input(
+            placeholder="До (дд.мм.гггг)",
+            value=CommunityState.new_poll_end_date,
+            on_change=CommunityState.set_new_poll_end_date,
+            width="100%",
+        ),
         rx.button(
             "Создать опрос",
             width="100%",
@@ -825,6 +851,173 @@ def _poll_form() -> rx.Component:
         width="100%",
         spacing="2",
         align="start",
+    )
+
+
+def _poll_option_row(o) -> rx.Component:
+    """Q01/Q02: строка-вариант в режиме выбора — вся строка кликабельна,
+    слева радио/чекбокс (зависит от allow_multiple), выбранный — заливка."""
+    selected = CommunityState.poll_selected_option_ids.contains(o.id)
+    return rx.hstack(
+        rx.box(
+            rx.cond(selected, rx.icon("check", size=13, color="white")),
+            width="20px",
+            height="20px",
+            border_radius=rx.cond(CommunityState.open_poll_item.allow_multiple, "6px", "999px"),
+            background=rx.cond(selected, BRAND_PURPLE, "transparent"),
+            border=rx.cond(selected, "none", "1.5px solid var(--gray-7)"),
+            display="flex",
+            align_items="center",
+            justify_content="center",
+            flex_shrink="0",
+        ),
+        rx.text(o.label, size="3", weight="medium"),
+        spacing="3",
+        align="center",
+        width="100%",
+        background=rx.cond(selected, BRAND_PURPLE_TINT, "white"),
+        border=rx.cond(selected, f"1.5px solid {BRAND_PURPLE}", "1px solid var(--gray-4)"),
+        border_radius="14px",
+        padding="0.9rem 1rem",
+        cursor="pointer",
+        on_click=CommunityState.toggle_poll_option_selection(o.id),
+    )
+
+
+def _poll_result_row(o) -> rx.Component:
+    """Q03/Q05: строка-результат — подпись «· ваш голос», процент и число."""
+    return rx.box(
+        rx.hstack(
+            rx.text(
+                rx.cond(o.is_mine, o.label + " · ваш голос", o.label),
+                size="3",
+                weight="medium",
+            ),
+            width="100%",
+        ),
+        rx.text(o.pct.to_string() + "% · " + o.votes.to_string(), size="2", color="var(--gray-9)", margin_top="0.1rem"),
+        progress_bar(o.pct),
+        width="100%",
+        background=rx.cond(o.is_mine, BRAND_PURPLE_TINT, "white"),
+        border=rx.cond(o.is_mine, f"1.5px solid {BRAND_PURPLE}", "1px solid var(--gray-4)"),
+        border_radius="14px",
+        padding="0.9rem 1rem",
+        margin_bottom="0.6rem",
+    )
+
+
+def _poll_detail_dialog() -> rx.Component:
+    """Q01–Q05: карточка опроса — варианты (до голоса) либо результаты
+    (после голоса/для завершённых), с переключением через «Изменить голос»."""
+    p = CommunityState.open_poll_item
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Опрос", style={"display": "none"}),
+            rx.cond(
+                p,
+                rx.vstack(
+                    rx.hstack(
+                        rx.icon("x", size=16, color="var(--gray-11)"),
+                        rx.text("Закрыть", size="2", weight="medium"),
+                        spacing="1",
+                        align="center",
+                        cursor="pointer",
+                        on_click=CommunityState.close_poll,
+                        width="fit-content",
+                        margin_bottom="1rem",
+                    ),
+                    rx.heading(p.title, size="6", weight="bold", margin_bottom="0.1rem"),
+                    rx.text(
+                        rx.cond(p.end_date_fmt != "", "Опрос · до " + p.end_date_fmt, "Опрос"),
+                        size="2",
+                        color="var(--gray-9)",
+                        margin_bottom="0.8rem",
+                    ),
+                    rx.cond(
+                        p.description != "",
+                        rx.text(p.description, size="2", color="var(--gray-11)", margin_bottom="1rem"),
+                    ),
+                    rx.cond(
+                        CommunityState.poll_editing,
+                        rx.vstack(
+                            rx.cond(
+                                p.allow_multiple,
+                                rx.text("Можно выбрать несколько вариантов.", size="1", color="var(--gray-9)", margin_bottom="0.2rem"),
+                            ),
+                            rx.foreach(p.options, _poll_option_row),
+                            width="100%",
+                            spacing="2",
+                        ),
+                        rx.vstack(
+                            rx.foreach(p.options, _poll_result_row),
+                            width="100%",
+                            spacing="0",
+                        ),
+                    ),
+                    rx.cond(
+                        CommunityState.poll_editing,
+                        rx.text(
+                            p.total_voters.to_string() + " голосов · результаты после ответа",
+                            size="2",
+                            color="var(--gray-9)",
+                            margin_top="0.4rem",
+                            margin_bottom="1rem",
+                        ),
+                        rx.text(
+                            p.total_voters.to_string() + " человек проголосовали",
+                            size="2",
+                            color="var(--gray-9)",
+                            margin_top="0.2rem",
+                            margin_bottom="1rem",
+                        ),
+                    ),
+                    rx.cond(
+                        AuthState.is_resident,
+                        rx.cond(
+                            p.is_active,
+                            rx.cond(
+                                CommunityState.poll_editing,
+                                rx.button(
+                                    "Голосовать",
+                                    width="100%",
+                                    size="3",
+                                    radius="full",
+                                    disabled=CommunityState.poll_selected_option_ids.length() == 0,
+                                    style=rx.cond(
+                                        CommunityState.poll_selected_option_ids.length() == 0,
+                                        {"background": "var(--gray-4)", "color": "var(--gray-9)"},
+                                        {"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+                                    ),
+                                    on_click=CommunityState.submit_poll_vote,
+                                ),
+                                rx.button(
+                                    "Изменить голос",
+                                    width="100%",
+                                    size="3",
+                                    radius="full",
+                                    style={"background": BRAND_PURPLE_TINT, "color": BRAND_ACTION_TEXT},
+                                    on_click=CommunityState.start_change_vote,
+                                ),
+                            ),
+                            rx.button(
+                                "Опрос завершён",
+                                width="100%",
+                                size="3",
+                                radius="full",
+                                disabled=True,
+                                style={"background": "var(--gray-4)", "color": "var(--gray-9)"},
+                            ),
+                        ),
+                    ),
+                    width="100%",
+                    align="start",
+                ),
+            ),
+            max_width=MAX_WIDTH,
+            min_height="480px",
+        ),
+        open=CommunityState.open_poll_id != 0,
+        on_open_change=CommunityState.set_poll_dialog_open,
     )
 
 
@@ -1287,7 +1480,12 @@ def _polls_list_dialog() -> rx.Component:
     view = CommunityState.polls_list_view
 
     def _row(p, completed: bool):
-        return _list_row(p.title, p.votes.to_string() + " голосов", completed=completed)
+        return _list_row(
+            p.title,
+            p.total_voters.to_string() + " голосов",
+            completed=completed,
+            on_click=CommunityState.open_poll(p.id),
+        )
 
     return rx.cond(
         view != "",
@@ -1527,6 +1725,7 @@ def home_tab() -> rx.Component:
         _initiatives_list_dialog(),
         _initiative_detail_dialog(),
         _polls_list_dialog(),
+        _poll_detail_dialog(),
         _identity_card(),
         _home_header(),
         rx.cond(
