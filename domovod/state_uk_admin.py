@@ -11,7 +11,23 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from .db import get_session
-from .models import Building, Entrance, Resident
+from .models import (
+    Building,
+    Collection,
+    CollectionPayment,
+    Debt,
+    Entrance,
+    Initiative,
+    InitiativeVote,
+    News,
+    PersonalContact,
+    Poll,
+    PollOption,
+    PollVote,
+    Resident,
+    Tenant,
+    UsefulAddress,
+)
 from .models import gen_invite_code
 from .qr import build_join_url, qr_data_uri
 from .setters import make_setter
@@ -63,14 +79,26 @@ class UKAdminState(AuthState):
     # создания дома: "" — скрыто, "code" — карточка с кодом, "qr" — QR.
     invite_modal_view: str = ""
 
-    # --- вкладка «Управление» (M02/M03): "menu" — список разделов,
-    # "proposals" — входящие предложения жильцов на модерации.
     invite_code_copied: bool = False
+
+    # --- N01–N08: «Настройки дома». settings_view живёт здесь (не в
+    # AuthState) — с неё никуда не нужно возвращаться из FinanceState/
+    # CommunityState, как было с management_view.
+    settings_view: str = "menu"  # "menu" | "edit_address" | "delete"
+    edit_address_input: str = ""
+    edit_error: str = ""
+    delete_confirm_input: str = ""
 
     set_new_building_address = make_setter("new_building_address")
     set_new_entrance_building_id = make_setter("new_entrance_building_id")
     set_new_entrance_number = make_setter("new_entrance_number")
     set_selected_building_id = make_setter("selected_building_id")
+    set_edit_address_input = make_setter("edit_address_input")
+    set_delete_confirm_input = make_setter("delete_confirm_input")
+
+    @rx.var
+    def delete_ready(self) -> bool:
+        return self.delete_confirm_input.strip().upper() == "УДАЛИТЬ ДОМ"
 
     @rx.var
     def visible_entrances(self) -> List[EntranceItem]:
@@ -296,6 +324,107 @@ class UKAdminState(AuthState):
                 session.add(entrance)
                 session.commit()
         return UKAdminState.load_admin_data
+
+    # ---------------- N01–N08: настройки дома ----------------
+
+    @rx.event
+    def open_settings(self):
+        self.settings_view = "menu"
+
+    @rx.event
+    def open_edit_address(self):
+        entrance = self.current_entrance
+        self.edit_address_input = entrance.building_address if entrance else ""
+        self.edit_error = ""
+        self.settings_view = "edit_address"
+
+    @rx.event
+    def save_address(self):
+        """N03 «Сохранить» — меняет адрес дома, не трогая сам дом/подъезд."""
+        address = self.edit_address_input.strip()
+        if not address:
+            self.edit_error = "Адрес не может быть пустым"
+            return
+        entrance = self.current_entrance
+        if not entrance:
+            return
+        with get_session() as session:
+            building = session.get(Building, entrance.building_id)
+            if building and building.tenant_id == int(self.tenant_id):
+                building.address = address
+                session.add(building)
+                session.commit()
+        self.settings_view = "menu"
+        return UKAdminState.load_admin_data
+
+    @rx.event
+    def open_delete_home(self):
+        self.delete_confirm_input = ""
+        self.settings_view = "delete"
+
+    @rx.event
+    def confirm_delete_home(self):
+        """N06–N08 «Удалить дом навсегда» — каскадно удаляет дом со всеми
+        публикациями, жителями и их данными. Отменить нельзя."""
+        if not self.delete_ready:
+            return
+        tenant_id = int(self.tenant_id)
+        with get_session() as session:
+            resident_ids = [
+                r.id for r in session.exec(select(Resident).where(Resident.tenant_id == tenant_id)).all()
+            ]
+            collection_ids = [
+                c.id for c in session.exec(select(Collection).where(Collection.tenant_id == tenant_id)).all()
+            ]
+            initiative_ids = [
+                i.id for i in session.exec(select(Initiative).where(Initiative.tenant_id == tenant_id)).all()
+            ]
+            poll_ids = [p.id for p in session.exec(select(Poll).where(Poll.tenant_id == tenant_id)).all()]
+
+            if poll_ids:
+                for row in session.exec(select(PollVote).where(PollVote.poll_id.in_(poll_ids))).all():
+                    session.delete(row)
+                for row in session.exec(select(PollOption).where(PollOption.poll_id.in_(poll_ids))).all():
+                    session.delete(row)
+            if initiative_ids:
+                for row in session.exec(
+                    select(InitiativeVote).where(InitiativeVote.initiative_id.in_(initiative_ids))
+                ).all():
+                    session.delete(row)
+            if collection_ids:
+                for row in session.exec(
+                    select(CollectionPayment).where(CollectionPayment.collection_id.in_(collection_ids))
+                ).all():
+                    session.delete(row)
+            for model in (Poll, Initiative, Collection, Debt, News, UsefulAddress):
+                for row in session.exec(select(model).where(model.tenant_id == tenant_id)).all():
+                    session.delete(row)
+            for row in session.exec(
+                select(PersonalContact).where(
+                    (PersonalContact.owner_role == "uk") & (PersonalContact.owner_id == tenant_id)
+                )
+            ).all():
+                session.delete(row)
+            if resident_ids:
+                for row in session.exec(
+                    select(PersonalContact).where(
+                        (PersonalContact.owner_role == "resident")
+                        & (PersonalContact.owner_id.in_(resident_ids))
+                    )
+                ).all():
+                    session.delete(row)
+            for row in session.exec(select(Resident).where(Resident.tenant_id == tenant_id)).all():
+                session.delete(row)
+            for row in session.exec(select(Entrance).where(Entrance.tenant_id == tenant_id)).all():
+                session.delete(row)
+            for row in session.exec(select(Building).where(Building.tenant_id == tenant_id)).all():
+                session.delete(row)
+            tenant = session.get(Tenant, tenant_id)
+            if tenant:
+                session.delete(tenant)
+            session.commit()
+        self._reset_session()
+        return rx.redirect("/")
 
     @rx.event
     def stop_live(self):
