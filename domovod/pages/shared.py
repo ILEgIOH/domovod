@@ -2968,9 +2968,8 @@ def _proposal_filter_chip(key: str, label: str) -> rx.Component:
 
 
 def _proposal_row(title, subtitle, on_click) -> rx.Component:
-    """M03: строка заявки, ведущая в M04 (сборы/инициативы — там можно
-    поправить поля перед публикацией). Опросы пока проверяются старым
-    способом — карточкой с кнопками прямо в списке (см. _proposed_poll_card)."""
+    """M03: строка заявки, ведущая в M04 — там можно поправить поля
+    (для опроса — включая сами варианты ответа) перед публикацией."""
     return section_card(
         rx.hstack(
             rx.vstack(
@@ -2996,9 +2995,8 @@ def _proposal_row(title, subtitle, on_click) -> rx.Component:
 
 def _proposals_screen() -> rx.Component:
     """M03 — входящие предложения жильцов (сборы/инициативы/опросы) одним
-    списком с фильтром по типу. Сборы и инициативы ведут в M04 (проверка
-    и правка полей); отклонение/публикация опросов пока остаются
-    отдельной, более простой карточкой без M04 — следующая партия работы."""
+    списком с фильтром по типу. Каждая строка ведёт в M04 — экран проверки
+    и правки полей перед публикацией."""
     show_collections = (AuthState.proposal_filter == "all") | (AuthState.proposal_filter == "collection")
     show_initiatives = (AuthState.proposal_filter == "all") | (AuthState.proposal_filter == "initiative")
     show_polls = (AuthState.proposal_filter == "all") | (AuthState.proposal_filter == "poll")
@@ -3074,7 +3072,21 @@ def _proposals_screen() -> rx.Component:
                         ),
                     ),
                 ),
-                rx.cond(show_polls, rx.foreach(CommunityState.proposed_polls, _proposed_poll_card)),
+                rx.cond(
+                    show_polls,
+                    rx.foreach(
+                        CommunityState.proposed_polls,
+                        lambda p: _proposal_row(
+                            p.title,
+                            p.proposed_by_name,
+                            on_click=[
+                                CommunityState.open_review_poll(p.id),
+                                AuthState.set_review_kind("poll"),
+                                AuthState.set_management_view("review"),
+                            ],
+                        ),
+                    ),
+                ),
             ),
         ),
         width="100%",
@@ -3234,6 +3246,112 @@ def _review_initiative_screen() -> rx.Component:
     )
 
 
+def _review_poll_option_input(label, idx) -> rx.Component:
+    return rx.hstack(
+        rx.input(
+            value=label,
+            on_change=lambda v: CommunityState.set_review_poll_option(idx, v),
+            placeholder="Вариант",
+            width="100%",
+        ),
+        rx.cond(
+            CommunityState.review_poll_options.length() > 2,
+            rx.icon(
+                "x",
+                size=16,
+                color="var(--gray-9)",
+                cursor="pointer",
+                on_click=CommunityState.remove_review_poll_option(idx),
+            ),
+        ),
+        align="center",
+        spacing="2",
+        width="100%",
+        margin_bottom="0.6rem",
+    )
+
+
+def _review_poll_screen() -> rx.Component:
+    """M04 — то же самое для опроса (F07–F09), включая варианты ответа:
+    их можно поправить, удалить или добавить перед публикацией."""
+    return rx.vstack(
+        _review_header(CommunityState.review_poll_author),
+        error_text(CommunityState.review_error),
+        field_label("Вопрос"),
+        rx.input(
+            value=CommunityState.review_poll_title,
+            on_change=CommunityState.set_review_poll_title,
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Варианты ответа"),
+        rx.foreach(CommunityState.review_poll_options, _review_poll_option_input),
+        rx.cond(
+            CommunityState.review_poll_options.length() < 10,
+            rx.box(
+                rx.text(
+                    "+ Добавить вариант",
+                    weight="bold",
+                    text_align="center",
+                    color=BRAND_ACTION_TEXT,
+                    size="2",
+                ),
+                width="100%",
+                background=BRAND_PURPLE_TINT,
+                border_radius="999px",
+                padding="0.6rem",
+                cursor="pointer",
+                on_click=CommunityState.add_review_poll_option,
+                margin_bottom="0.9rem",
+            ),
+        ),
+        field_label("Опрос до"),
+        rx.input(
+            value=CommunityState.review_poll_end_date,
+            on_change=CommunityState.set_review_poll_end_date,
+            placeholder="дд.мм.гггг",
+            width="100%",
+            margin_bottom="0.9rem",
+        ),
+        field_label("Описание · необязательно"),
+        rx.text_area(
+            value=CommunityState.review_poll_description,
+            on_change=CommunityState.set_review_poll_description,
+            width="100%",
+            rows="3",
+            margin_bottom="0.9rem",
+        ),
+        rx.hstack(
+            rx.text("Несколько ответов", size="2", weight="medium"),
+            rx.spacer(),
+            rx.switch(
+                checked=CommunityState.review_poll_allow_multiple,
+                on_change=CommunityState.set_review_poll_allow_multiple,
+            ),
+            width="100%",
+            align="center",
+            margin_bottom="0.7rem",
+        ),
+        rx.hstack(
+            rx.text("Можно менять голос", size="2", weight="medium"),
+            rx.spacer(),
+            rx.switch(
+                checked=CommunityState.review_poll_allow_vote_change,
+                on_change=CommunityState.set_review_poll_allow_vote_change,
+            ),
+            width="100%",
+            align="center",
+            margin_bottom="1rem",
+        ),
+        _review_actions(
+            ProposalsState.open_reject("poll", CommunityState.review_poll_id, CommunityState.review_poll_title),
+            CommunityState.save_and_publish_review_poll,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
 def management_tab() -> rx.Component:
     return rx.fragment(
         rx.cond(AuthState.is_uk, _reject_reason_dialog()),
@@ -3244,6 +3362,7 @@ def management_tab() -> rx.Component:
                 AuthState.review_kind,
                 ("collection", _review_collection_screen()),
                 ("initiative", _review_initiative_screen()),
+                ("poll", _review_poll_screen()),
                 _management_menu(),
             )),
             _management_menu(),

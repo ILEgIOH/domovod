@@ -124,6 +124,16 @@ class CommunityState(AuthState):
     propose_poll_end_date: str = ""
     propose_poll_error: str = ""
 
+    # --- M04: проверка/правка предложенного опроса перед публикацией ---
+    review_poll_id: int = 0
+    review_poll_title: str = ""
+    review_poll_description: str = ""
+    review_poll_options: List[str] = ["", ""]
+    review_poll_allow_multiple: bool = False
+    review_poll_allow_vote_change: bool = True
+    review_poll_end_date: str = ""
+    review_poll_author: str = ""
+
     # I01: инициатива, открытая в детальной карточке.
     open_initiative_id: int = 0
 
@@ -160,6 +170,11 @@ class CommunityState(AuthState):
     set_propose_poll_allow_multiple = make_setter("propose_poll_allow_multiple")
     set_propose_poll_allow_vote_change = make_setter("propose_poll_allow_vote_change")
     set_propose_poll_end_date = make_setter("propose_poll_end_date")
+    set_review_poll_title = make_setter("review_poll_title")
+    set_review_poll_description = make_setter("review_poll_description")
+    set_review_poll_allow_multiple = make_setter("review_poll_allow_multiple")
+    set_review_poll_allow_vote_change = make_setter("review_poll_allow_vote_change")
+    set_review_poll_end_date = make_setter("review_poll_end_date")
 
     # ---------------- загрузка ----------------
 
@@ -729,6 +744,91 @@ class CommunityState(AuthState):
                 p.is_active = True
                 session.add(p)
                 session.commit()
+        return CommunityState.load_community
+
+    @rx.event
+    def add_review_poll_option(self):
+        if len(self.review_poll_options) < 10:
+            self.review_poll_options = self.review_poll_options + [""]
+
+    @rx.event
+    def remove_review_poll_option(self, index: int):
+        if len(self.review_poll_options) > 2:
+            self.review_poll_options = [
+                o for idx, o in enumerate(self.review_poll_options) if idx != index
+            ]
+
+    @rx.event
+    def set_review_poll_option(self, index: int, value: str):
+        options = list(self.review_poll_options)
+        if 0 <= index < len(options):
+            options[index] = value
+            self.review_poll_options = options
+
+    @rx.event
+    def open_review_poll(self, poll_id: int):
+        """M04 — подгружает поля предложенного опроса (включая варианты
+        ответа) в форму проверки/правки."""
+        self.review_error = ""
+        with get_session() as session:
+            p = session.get(Poll, poll_id)
+            if not p or p.tenant_id != int(self.tenant_id):
+                return
+            self.review_poll_id = p.id
+            self.review_poll_title = p.title
+            self.review_poll_description = p.description
+            self.review_poll_end_date = _fmt_date(p.end_date)
+            self.review_poll_allow_multiple = p.allow_multiple
+            self.review_poll_allow_vote_change = p.allow_vote_change
+            opts = session.exec(
+                select(PollOption).where(PollOption.poll_id == p.id).order_by(PollOption.order)
+            ).all()
+            self.review_poll_options = [o.label for o in opts] or ["", ""]
+            author = ""
+            if p.proposed_by_resident_id:
+                proposer = session.get(Resident, p.proposed_by_resident_id)
+                if proposer:
+                    author = f"{proposer.full_name} · квартира {proposer.apartment}"
+            self.review_poll_author = author
+
+    @rx.event
+    def save_and_publish_review_poll(self):
+        """M04 «Опубликовать» — сохраняет правки админа (включая варианты
+        ответа) и публикует опрос."""
+        self.review_error = ""
+        title = self.review_poll_title.strip()
+        options = [o.strip() for o in self.review_poll_options if o.strip()]
+        if not title:
+            self.review_error = "Укажите вопрос"
+            return
+        if len(options) < 2:
+            self.review_error = "Добавьте минимум два варианта ответа"
+            return
+        if len(options) != len(set(options)):
+            self.review_error = "Варианты не должны повторяться"
+            return
+        with get_session() as session:
+            p = session.get(Poll, self.review_poll_id)
+            if not p or p.tenant_id != int(self.tenant_id):
+                self.review_error = "Заявка не найдена — возможно, её уже обработали"
+                return
+            p.title = title
+            p.description = self.review_poll_description.strip()
+            p.end_date = _parse_date(self.review_poll_end_date)
+            p.allow_multiple = self.review_poll_allow_multiple
+            p.allow_vote_change = self.review_poll_allow_vote_change
+            p.status = "published"
+            p.is_active = True
+            session.add(p)
+            # Заявка ещё не опубликована — голосов по ней быть не может,
+            # поэтому старые варианты можно просто заменить новым набором.
+            for o in session.exec(select(PollOption).where(PollOption.poll_id == p.id)).all():
+                session.delete(o)
+            session.commit()
+            for idx, label in enumerate(options):
+                session.add(PollOption(poll_id=p.id, label=label, order=idx))
+            session.commit()
+        self.management_view = "proposals"
         return CommunityState.load_community
 
     @rx.event
