@@ -79,6 +79,10 @@ class AuthState(rx.State):
     proposal_filter: str = "all"  # "all" | "collection" | "initiative" | "poll"
     review_kind: str = ""  # "collection" | "initiative" | "poll" — что сейчас на M04
 
+    # --- M06: «Создать в доме» — собственная публикация админа (без
+    # модерации). "" — показывает выбор типа; иначе конкретная форма.
+    admin_create_kind: str = ""
+
     # --- мастер предложения (F01–F13): резидент предлагает сбор/
     # инициативу/опрос на модерацию УК. Шаг живёт тут, сами поля формы —
     # в new_col_*/new_initiative_*/new_poll_* (FinanceState/CommunityState).
@@ -115,6 +119,7 @@ class AuthState(rx.State):
     set_management_view = make_setter("management_view")
     set_proposal_filter = make_setter("proposal_filter")
     set_review_kind = make_setter("review_kind")
+    set_admin_create_kind = make_setter("admin_create_kind")
 
     @rx.event
     def open_management_proposals(self):

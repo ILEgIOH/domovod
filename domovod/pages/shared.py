@@ -1315,25 +1315,326 @@ def _debts_block() -> rx.Component:
     )
 
 
+def _admin_create_row(icon: str, title: str, subtitle: str, kind: str) -> rx.Component:
+    return rx.hstack(
+        rx.icon(icon, size=20, color=BRAND_ACTION_TEXT),
+        rx.vstack(
+            rx.text(title, size="3", weight="bold"),
+            rx.text(subtitle, size="2", color="var(--gray-9)"),
+            spacing="0",
+            align="start",
+        ),
+        rx.spacer(),
+        rx.icon("chevron-right", size=18, color="var(--gray-9)"),
+        width="100%",
+        align="center",
+        spacing="3",
+        background="white",
+        border_radius="16px",
+        padding="0.9rem 1rem",
+        cursor="pointer",
+        on_click=AuthState.set_admin_create_kind(kind),
+    )
+
+
+def _admin_create_picker() -> rx.Component:
+    """M06 — «Создать в доме»: админ публикует материал сразу, без
+    модерации (авторство остаётся за ним)."""
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Создать в доме", size="5", weight="bold"),
+            rx.spacer(),
+            rx.dialog.close(rx.icon("x", size=18, color="var(--gray-9)", cursor="pointer")),
+            width="100%",
+            align="center",
+            margin_bottom="0.75rem",
+        ),
+        _admin_create_row("wallet", "Сбор", "Опубликовать от своего имени", "collection"),
+        _admin_create_row("users", "Инициативу", "Собрать соседей", "initiative"),
+        _admin_create_row("bar-chart-2", "Опрос", "Узнать мнение", "poll"),
+        _admin_create_row("megaphone", "Объявление", "Важное событие дома", "announcement"),
+        _admin_create_row("receipt", "Начисление", "Выставить долг жителю", "debt"),
+        width="100%",
+        spacing="2",
+        align="start",
+    )
+
+
+def _admin_form_header(title: str) -> rx.Component:
+    return rx.hstack(
+        rx.icon(
+            "chevron-left",
+            size=20,
+            color="var(--gray-11)",
+            cursor="pointer",
+            on_click=AuthState.set_admin_create_kind(""),
+        ),
+        rx.vstack(
+            rx.heading(title, size="5", weight="bold"),
+            rx.text("Публикация от администратора", size="2", color="var(--gray-9)"),
+            spacing="0",
+            align="start",
+        ),
+        spacing="2",
+        align="center",
+        margin_bottom="0.75rem",
+        width="100%",
+    )
+
+
+def _admin_collection_form() -> rx.Component:
+    """M14 + M08 объединены в один экран (без промежуточного «Далее»)."""
+    return rx.vstack(
+        _admin_form_header("Новый сбор"),
+        error_text(FinanceState.col_error),
+        field_label("Название"),
+        rx.input(
+            value=FinanceState.new_col_title,
+            on_change=FinanceState.set_new_col_title,
+            placeholder="Покраска лифта",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Как считаем сумму"),
+        _mode_toggle(
+            FinanceState.new_col_mode,
+            "per_apartment", "С квартиры",
+            "total", "Общая цель",
+            FinanceState.set_new_col_mode,
+        ),
+        field_label(rx.cond(FinanceState.new_col_mode == "per_apartment", "Сумма, ₽", "Общая цель, ₽")),
+        rx.input(
+            value=FinanceState.new_col_amount,
+            on_change=FinanceState.set_new_col_amount,
+            placeholder="1000",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Срок сбора"),
+        rx.input(
+            value=FinanceState.new_col_end_date,
+            on_change=FinanceState.set_new_col_end_date,
+            placeholder="дд.мм.гггг",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Описание"),
+        rx.text_area(
+            value=FinanceState.new_col_description,
+            on_change=FinanceState.set_new_col_description,
+            width="100%",
+            rows="3",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Инструкция · необязательно"),
+        rx.text_area(
+            value=FinanceState.new_col_instructions,
+            on_change=FinanceState.set_new_col_instructions,
+            width="100%",
+            rows="2",
+            margin_bottom="0.8rem",
+        ),
+        rx.button(
+            "Опубликовать",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=FinanceState.create_collection,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _admin_initiative_form() -> rx.Component:
+    """M15 + M17 объединены в один экран."""
+    return rx.vstack(
+        _admin_form_header("Новая инициатива"),
+        error_text(CommunityState.initiative_error),
+        field_label("Название"),
+        rx.input(
+            value=CommunityState.new_initiative_title,
+            on_change=CommunityState.set_new_initiative_title,
+            placeholder="Субботник",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Дата и время"),
+        rx.input(
+            value=CommunityState.new_initiative_event_date,
+            on_change=CommunityState.set_new_initiative_event_date,
+            placeholder="3 октября 2026 · 10:00",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Сколько нужно участников"),
+        rx.input(
+            value=CommunityState.new_initiative_needed,
+            on_change=CommunityState.set_new_initiative_needed,
+            placeholder="5",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Описание"),
+        rx.text_area(
+            value=CommunityState.new_initiative_description,
+            on_change=CommunityState.set_new_initiative_description,
+            width="100%",
+            rows="3",
+            margin_bottom="0.8rem",
+        ),
+        rx.button(
+            "Опубликовать",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=CommunityState.create_initiative,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _admin_poll_form() -> rx.Component:
+    """M16 + M18 объединены в один экран."""
+    return rx.vstack(
+        _admin_form_header("Новый опрос"),
+        error_text(CommunityState.poll_error),
+        field_label("Вопрос"),
+        rx.input(
+            value=CommunityState.new_poll_title,
+            on_change=CommunityState.set_new_poll_title,
+            placeholder="Нужна ли камера у входа?",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Варианты ответа"),
+        rx.input(
+            value=CommunityState.new_poll_option_1,
+            on_change=CommunityState.set_new_poll_option_1,
+            placeholder="Да, установить",
+            width="100%",
+            margin_bottom="0.4rem",
+        ),
+        rx.input(
+            value=CommunityState.new_poll_option_2,
+            on_change=CommunityState.set_new_poll_option_2,
+            placeholder="Нет, не нужно",
+            width="100%",
+            margin_bottom="0.4rem",
+        ),
+        rx.input(
+            value=CommunityState.new_poll_option_3,
+            on_change=CommunityState.set_new_poll_option_3,
+            placeholder="Ещё вариант · необязательно",
+            width="100%",
+            margin_bottom="0.4rem",
+        ),
+        rx.input(
+            value=CommunityState.new_poll_option_4,
+            on_change=CommunityState.set_new_poll_option_4,
+            placeholder="Ещё вариант · необязательно",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Опрос до"),
+        rx.input(
+            value=CommunityState.new_poll_end_date,
+            on_change=CommunityState.set_new_poll_end_date,
+            placeholder="дд.мм.гггг",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Описание · необязательно"),
+        rx.text_area(
+            value=CommunityState.new_poll_description,
+            on_change=CommunityState.set_new_poll_description,
+            width="100%",
+            rows="2",
+            margin_bottom="0.6rem",
+        ),
+        rx.hstack(
+            rx.text("Несколько ответов", size="2", weight="medium"),
+            rx.spacer(),
+            rx.switch(
+                checked=CommunityState.new_poll_allow_multiple,
+                on_change=CommunityState.set_new_poll_allow_multiple,
+            ),
+            width="100%",
+            align="center",
+            margin_bottom="0.8rem",
+        ),
+        rx.button(
+            "Опубликовать",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=CommunityState.create_poll,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _admin_announcement_form() -> rx.Component:
+    return rx.vstack(
+        _admin_form_header("Новое объявление"),
+        error_text(NewsState.news_error),
+        field_label("Заголовок"),
+        rx.input(
+            value=NewsState.new_title,
+            on_change=NewsState.set_new_title,
+            placeholder="Отключение света",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Детали"),
+        rx.input(
+            value=NewsState.new_body,
+            on_change=NewsState.set_new_body,
+            placeholder="6 сен. с 10 до 18",
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Иконка"),
+        _icon_picker(NewsState.new_icon, NewsState.set_new_icon),
+        rx.button(
+            "Опубликовать",
+            width="100%",
+            size="3",
+            radius="full",
+            margin_top="0.6rem",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=NewsState.create_news,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _admin_debt_form() -> rx.Component:
+    return rx.vstack(
+        _admin_form_header("Новое начисление"),
+        _debt_form(),
+        width="100%",
+        align="start",
+    )
+
+
 def _create_dialog_content() -> rx.Component:
     return rx.dialog.content(
-        rx.dialog.title("Создать"),
-        rx.tabs.root(
-            rx.tabs.list(
-                rx.tabs.trigger("Объявление", value="news"),
-                rx.tabs.trigger("Сбор", value="col"),
-                rx.tabs.trigger("Начисление", value="debt"),
-                rx.tabs.trigger("Инициатива", value="init"),
-                rx.tabs.trigger("Опрос", value="poll"),
-                style={"overflow_x": "auto", "flex_wrap": "nowrap"},
-            ),
-            rx.tabs.content(_announcement_form(), value="news", padding_top="0.8rem"),
-            rx.tabs.content(_collection_form(), value="col", padding_top="0.8rem"),
-            rx.tabs.content(_debt_form(), value="debt", padding_top="0.8rem"),
-            rx.tabs.content(_initiative_form(), value="init", padding_top="0.8rem"),
-            rx.tabs.content(_poll_form(), value="poll", padding_top="0.8rem"),
-            default_value="news",
-            width="100%",
+        rx.dialog.title("Создать", style={"display": "none"}),
+        rx.match(
+            AuthState.admin_create_kind,
+            ("collection", _admin_collection_form()),
+            ("initiative", _admin_initiative_form()),
+            ("poll", _admin_poll_form()),
+            ("announcement", _admin_announcement_form()),
+            ("debt", _admin_debt_form()),
+            _admin_create_picker(),
         ),
         max_width="380px",
     )
