@@ -3030,67 +3030,43 @@ def _personal_contacts_block() -> rx.Component:
     )
 
 
+def _address_read_row(a) -> rx.Component:
+    return rx.vstack(
+        rx.text(a.title, weight="bold", size="2"),
+        rx.text(
+            a.value + rx.cond(a.phone != "", " · " + a.phone, ""),
+            size="1",
+            color="var(--gray-9)",
+        ),
+        align="start",
+        spacing="0",
+        padding_y="0.25rem",
+        width="100%",
+    )
+
+
 def _useful_addresses_block() -> rx.Component:
-    return section_card(
-        rx.heading("Полезные адреса", size="4", margin_bottom="0.4rem"),
-        rx.cond(
-            ContactsState.useful_addresses.length() == 0,
-            rx.text("Пока не добавлены", size="2", color="var(--gray-9)"),
-            rx.foreach(
-                ContactsState.useful_addresses,
-                lambda a: rx.hstack(
-                    rx.vstack(
-                        rx.text(a.title, weight="bold", size="2"),
-                        rx.text(a.value, size="1", color="var(--gray-9)"),
-                        align="start",
-                        spacing="0",
-                    ),
-                    rx.spacer(),
-                    rx.cond(
-                        AuthState.is_uk,
-                        rx.icon_button(
-                            rx.icon("x", size=13),
-                            variant="ghost",
-                            size="1",
-                            on_click=ContactsState.delete_address(a.id),
-                        ),
-                    ),
-                    width="100%",
-                    padding_y="0.25rem",
-                ),
+    """Только чтение — управление службами/адресами переехало в хаб
+    «Жильцы и контакты» (R01–R04) на вкладке «Управление» у админа."""
+    return rx.vstack(
+        section_card(
+            rx.heading("Службы дома", size="4", margin_bottom="0.4rem"),
+            rx.cond(
+                ContactsState.services.length() == 0,
+                rx.text("Пока не добавлены", size="2", color="var(--gray-9)"),
+                rx.foreach(ContactsState.services, _address_read_row),
             ),
         ),
-        rx.cond(
-            AuthState.is_uk,
-            rx.fragment(
-                error_text(ContactsState.address_error),
-                rx.hstack(
-                    rx.input(
-                        placeholder="Название",
-                        value=ContactsState.new_address_title,
-                        on_change=ContactsState.set_new_address_title,
-                        width="100%",
-                    ),
-                    rx.input(
-                        placeholder="Адрес/телефон",
-                        value=ContactsState.new_address_value,
-                        on_change=ContactsState.set_new_address_value,
-                        width="100%",
-                    ),
-                    width="100%",
-                    margin_top="0.5rem",
-                ),
-                rx.button(
-                    rx.icon("plus", size=14),
-                    "Добавить адрес",
-                    size="2",
-                    variant="soft",
-                    width="100%",
-                    margin_top="0.5rem",
-                    on_click=ContactsState.add_address,
-                ),
+        section_card(
+            rx.heading("Полезные адреса", size="4", margin_bottom="0.4rem"),
+            rx.cond(
+                ContactsState.addresses.length() == 0,
+                rx.text("Пока не добавлены", size="2", color="var(--gray-9)"),
+                rx.foreach(ContactsState.addresses, _address_read_row),
             ),
         ),
+        width="100%",
+        spacing="3",
     )
 
 
@@ -3336,13 +3312,28 @@ def _management_menu() -> rx.Component:
             on_click=AuthState.open_management_proposals,
             badge=proposals_count,
         ),
-        _management_menu_item("door-open", "Заявки в дом", "Скоро"),
+        _management_menu_item(
+            "door-open",
+            "Заявки в дом",
+            rx.cond(
+                UKAdminState.pending_residents.length() > 0,
+                UKAdminState.pending_residents.length().to_string() + " ожидает решения",
+                "Пока нет заявок",
+            ),
+            on_click=[
+                UKAdminState.set_residents_view("requests"),
+                AuthState.set_management_view("residents"),
+            ],
+        ),
         _management_menu_item("megaphone", "Объявления", "Вода, свет, лифт и другие события"),
         _management_menu_item(
             "users",
             "Жильцы и контакты",
             "Список жильцов и администраторов",
-            on_click=TabState.set_uk_tab("contacts"),
+            on_click=[
+                UKAdminState.set_residents_view("menu"),
+                AuthState.set_management_view("residents"),
+            ],
         ),
         _management_menu_item(
             "link",
@@ -3945,6 +3936,461 @@ def _settings_screen() -> rx.Component:
     )
 
 
+def _residents_hub_header(title: str, back_to: str = "menu") -> rx.Component:
+    return rx.hstack(
+        rx.icon(
+            "chevron-left",
+            size=22,
+            color="var(--gray-11)",
+            cursor="pointer",
+            on_click=UKAdminState.set_residents_view(back_to),
+        ),
+        rx.heading(title, size="5", weight="bold"),
+        spacing="2",
+        align="center",
+        margin_bottom="0.75rem",
+    )
+
+
+def _residents_menu() -> rx.Component:
+    """R01 — «Жильцы и контакты»: хаб над службами, адресами, жителями и заявками."""
+    return rx.vstack(
+        _residents_hub_header("Жильцы и контакты", "menu"),
+        _settings_menu_item(
+            "wrench",
+            "Службы дома",
+            "Сантехник, электрик, диспетчерская",
+            on_click=UKAdminState.set_residents_view("services"),
+        ),
+        _settings_menu_item(
+            "map-pin",
+            "Полезные адреса",
+            "Места и организации рядом",
+            on_click=UKAdminState.set_residents_view("addresses"),
+        ),
+        _settings_menu_item(
+            "users",
+            "Жильцы · " + UKAdminState.residents.length().to_string(),
+            "Поиск и права доступа",
+            on_click=UKAdminState.set_residents_view("residents"),
+        ),
+        _settings_menu_item(
+            "door-open",
+            "Заявки · " + UKAdminState.pending_residents.length().to_string(),
+            "Проверка квартир и новых жильцов",
+            on_click=UKAdminState.set_residents_view("requests"),
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _address_list_row(a) -> rx.Component:
+    return section_card(
+        rx.hstack(
+            rx.vstack(
+                rx.text(a.title, weight="bold", size="3"),
+                rx.text(a.value, size="2", color="var(--gray-9)"),
+                spacing="0",
+                align="start",
+            ),
+            rx.spacer(),
+            rx.icon("chevron-right", size=16, color="var(--gray-8)"),
+            width="100%",
+            align="center",
+        ),
+        cursor="pointer",
+        on_click=[
+            ContactsState.open_address_editor(a.category, a.id),
+            UKAdminState.set_residents_view("editor"),
+        ],
+    )
+
+
+def _services_list() -> rx.Component:
+    """R01 → «Службы дома» — список; «Добавить» открывает R02."""
+    return rx.vstack(
+        _residents_hub_header("Службы дома"),
+        rx.cond(
+            ContactsState.services.length() == 0,
+            rx.text("Пока не добавлены", size="2", color="var(--gray-9)", margin_bottom="0.75rem"),
+            rx.foreach(ContactsState.services, _address_list_row),
+        ),
+        rx.box(
+            rx.text("+ Добавить службу", weight="bold", text_align="center", color=BRAND_ACTION_TEXT, size="2"),
+            width="100%",
+            background=BRAND_PURPLE_TINT,
+            border_radius="999px",
+            padding="0.7rem",
+            cursor="pointer",
+            on_click=[
+                ContactsState.open_address_editor("service", 0),
+                UKAdminState.set_residents_view("editor"),
+            ],
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _addresses_list() -> rx.Component:
+    """R01 → «Полезные адреса» — список; «Добавить» открывает R03."""
+    return rx.vstack(
+        _residents_hub_header("Полезные адреса"),
+        rx.cond(
+            ContactsState.addresses.length() == 0,
+            rx.text("Пока не добавлены", size="2", color="var(--gray-9)", margin_bottom="0.75rem"),
+            rx.foreach(ContactsState.addresses, _address_list_row),
+        ),
+        rx.box(
+            rx.text("+ Добавить адрес", weight="bold", text_align="center", color=BRAND_ACTION_TEXT, size="2"),
+            width="100%",
+            background=BRAND_PURPLE_TINT,
+            border_radius="999px",
+            padding="0.7rem",
+            cursor="pointer",
+            on_click=[
+                ContactsState.open_address_editor("address", 0),
+                UKAdminState.set_residents_view("editor"),
+            ],
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _address_editor() -> rx.Component:
+    """R02/R03 — одна форма на службу дома и полезный адрес, определяется
+    ContactsState.editor_category. R10 (удаление) — подтверждение внизу."""
+    is_service = ContactsState.editor_category == "service"
+    back_view = rx.cond(is_service, "services", "addresses")
+    return rx.vstack(
+        rx.hstack(
+            rx.icon(
+                "chevron-left",
+                size=22,
+                color="var(--gray-11)",
+                cursor="pointer",
+                on_click=UKAdminState.set_residents_view(back_view),
+            ),
+            rx.heading(
+                rx.cond(is_service, "Служебный контакт", "Полезный адрес"),
+                size="5",
+                weight="bold",
+            ),
+            spacing="2",
+            align="center",
+        ),
+        rx.text("Добавление / редактирование", size="2", color="var(--gray-9)", margin_bottom="0.75rem"),
+        error_text(ContactsState.address_error),
+        field_label("Название / роль"),
+        rx.input(
+            value=ContactsState.new_address_title,
+            on_change=ContactsState.set_new_address_title,
+            placeholder=rx.cond(is_service, "Сантехник", "Сделать ключи"),
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label(rx.cond(is_service, "Имя · необязательно", "Адрес")),
+        rx.input(
+            value=ContactsState.new_address_value,
+            on_change=ContactsState.set_new_address_value,
+            placeholder=rx.cond(is_service, "Александр", "ул. Рябиновая, 3"),
+            width="100%",
+            margin_bottom="0.6rem",
+        ),
+        field_label("Телефон"),
+        rx.input(
+            value=ContactsState.new_address_phone,
+            on_change=ContactsState.set_new_address_phone,
+            placeholder="+7 900 000-00-00",
+            width="100%",
+            margin_bottom="1rem",
+        ),
+        rx.button(
+            "Сохранить",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=[ContactsState.save_address, UKAdminState.set_residents_view(back_view)],
+            margin_bottom="0.5rem",
+        ),
+        rx.cond(
+            ContactsState.editor_id != 0,
+            rx.button(
+                "Удалить контакт",
+                width="100%",
+                size="3",
+                radius="full",
+                variant="soft",
+                color_scheme="red",
+                on_click=ContactsState.ask_delete_address(ContactsState.editor_id),
+            ),
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _confirm_delete_address_dialog() -> rx.Component:
+    """R10 — подтверждение удаления службы/адреса."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Удалить контакт?"),
+            rx.text(
+                "«" + ContactsState.new_address_title + "» исчезнет из контактов дома.",
+                size="2",
+                color="var(--gray-10)",
+                margin_bottom="1rem",
+            ),
+            rx.hstack(
+                rx.button("Отмена", variant="soft", flex="1", on_click=ContactsState.cancel_delete_address),
+                rx.button(
+                    "Удалить контакт",
+                    color_scheme="red",
+                    flex="1",
+                    on_click=[
+                        ContactsState.confirm_delete_address,
+                        UKAdminState.set_residents_view(
+                            rx.cond(ContactsState.editor_category == "service", "services", "addresses")
+                        ),
+                    ],
+                ),
+                width="100%",
+            ),
+            max_width="360px",
+        ),
+        open=ContactsState.confirm_delete_address_id != 0,
+        on_open_change=ContactsState.cancel_delete_address,
+    )
+
+
+def _resident_row(r) -> rx.Component:
+    return section_card(
+        rx.hstack(
+            rx.vstack(
+                rx.text(r.full_name, weight="bold", size="3"),
+                rx.text("Квартира " + r.apartment, size="2", color="var(--gray-9)"),
+                spacing="0",
+                align="start",
+            ),
+            rx.spacer(),
+            rx.icon("chevron-right", size=16, color="var(--gray-8)"),
+            width="100%",
+            align="center",
+        ),
+        cursor="pointer",
+        on_click=UKAdminState.open_resident_detail(r.id),
+    )
+
+
+def _residents_list() -> rx.Component:
+    """R05 — список жильцов с поиском по имени/квартире."""
+    return rx.vstack(
+        _residents_hub_header("Контакты"),
+        rx.input(
+            value=UKAdminState.resident_search,
+            on_change=UKAdminState.set_resident_search,
+            placeholder="Имя или квартира",
+            width="100%",
+            margin_bottom="0.75rem",
+        ),
+        rx.cond(
+            UKAdminState.filtered_residents.length() == 0,
+            rx.text("Никого не нашли", size="2", color="var(--gray-9)"),
+            rx.foreach(UKAdminState.filtered_residents, _resident_row),
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _resident_detail() -> rx.Component:
+    """R07 — карточка жильца. «Написать» из макета не делаем — в приложении
+    нет внутреннего мессенджера. Права администратора (R08/R09) — отдельная
+    partия работы, требует решения по архитектуре ролей."""
+    r = UKAdminState.selected_resident
+    return rx.cond(
+        r,
+        rx.vstack(
+            _residents_hub_header("Житель дома", "residents"),
+            rx.center(
+                rx.box(
+                    rx.text(r.full_name[0], size="6", weight="bold", color=BRAND_PURPLE),
+                    width="72px",
+                    height="72px",
+                    border_radius="999px",
+                    background=BRAND_PURPLE_TINT,
+                    display="flex",
+                    align_items="center",
+                    justify_content="center",
+                ),
+                width="100%",
+                margin_bottom="0.75rem",
+            ),
+            rx.center(rx.heading(r.full_name, size="5", weight="bold"), width="100%"),
+            rx.center(
+                rx.text("Квартира " + r.apartment, size="2", color="var(--gray-9)"),
+                width="100%",
+                margin_bottom="1.5rem",
+            ),
+            rx.button(
+                "Удалить из дома",
+                width="100%",
+                size="3",
+                radius="full",
+                variant="soft",
+                color_scheme="red",
+                on_click=UKAdminState.ask_delete_resident(r.id),
+            ),
+            width="100%",
+            align="start",
+        ),
+    )
+
+
+def _confirm_delete_resident_dialog() -> rx.Component:
+    """R11 — подтверждение удаления жителя."""
+    r = UKAdminState.selected_resident
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Удалить жителя?"),
+            rx.cond(
+                r,
+                rx.text(
+                    "Доступ " + r.full_name + " к этому дому будет закрыт. "
+                    "Публикации останутся в истории.",
+                    size="2",
+                    color="var(--gray-10)",
+                    margin_bottom="1rem",
+                ),
+            ),
+            rx.hstack(
+                rx.button("Отмена", variant="soft", flex="1", on_click=UKAdminState.cancel_delete_resident),
+                rx.button(
+                    "Удалить из дома",
+                    color_scheme="red",
+                    flex="1",
+                    on_click=UKAdminState.confirm_delete_resident,
+                ),
+                width="100%",
+            ),
+            max_width="360px",
+        ),
+        open=UKAdminState.confirm_delete_resident_id != 0,
+        on_open_change=UKAdminState.cancel_delete_resident,
+    )
+
+
+def _request_row(r) -> rx.Component:
+    return section_card(
+        rx.text(r.full_name, weight="bold", size="3"),
+        rx.text(
+            "Квартира " + r.apartment + " · " + r.submitted_fmt,
+            size="2",
+            color="var(--gray-9)",
+            margin_bottom="0.6rem",
+        ),
+        rx.text(
+            "В этой квартире уже есть житель. Несколько соседей могут жить "
+            "в одной квартире — уточните информацию перед решением.",
+            size="2",
+            color="var(--gray-9)",
+            margin_bottom="0.6rem",
+        ),
+        rx.hstack(
+            rx.button(
+                "Подтвердить подключение",
+                size="2",
+                flex="1",
+                style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+                on_click=UKAdminState.approve_pending_resident(r.id),
+            ),
+            width="100%",
+            margin_bottom="0.4rem",
+        ),
+        rx.button(
+            "Отклонить с причиной",
+            size="2",
+            width="100%",
+            variant="soft",
+            color_scheme="red",
+            on_click=UKAdminState.ask_reject_request(r.id),
+        ),
+    )
+
+
+def _requests_list() -> rx.Component:
+    """R06 — заявки на уже занятую квартиру, ждущие решения."""
+    return rx.vstack(
+        _residents_hub_header("Заявки в дом"),
+        rx.cond(
+            UKAdminState.pending_residents.length() == 0,
+            rx.text("Пока нет заявок", size="2", color="var(--gray-9)"),
+            rx.fragment(
+                rx.text(
+                    UKAdminState.pending_residents.length().to_string() + " ожидает решения",
+                    size="2",
+                    color="var(--gray-9)",
+                    margin_bottom="0.75rem",
+                ),
+                rx.foreach(UKAdminState.pending_residents, _request_row),
+            ),
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _reject_request_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Отклонить заявку"),
+            field_label("Причина · необязательно"),
+            rx.text_area(
+                value=UKAdminState.reject_request_reason,
+                on_change=UKAdminState.set_reject_request_reason,
+                placeholder="Например: квартира уже подтверждена другим жильцом.",
+                width="100%",
+                rows="3",
+                margin_bottom="0.8rem",
+            ),
+            rx.hstack(
+                rx.button("Отмена", variant="soft", flex="1", on_click=UKAdminState.cancel_reject_request),
+                rx.button(
+                    "Отклонить",
+                    color_scheme="red",
+                    flex="1",
+                    on_click=UKAdminState.confirm_reject_request,
+                ),
+                width="100%",
+            ),
+            max_width="360px",
+        ),
+        open=UKAdminState.reject_request_id != 0,
+        on_open_change=UKAdminState.cancel_reject_request,
+    )
+
+
+def _residents_hub() -> rx.Component:
+    return rx.fragment(
+        _confirm_delete_address_dialog(),
+        _confirm_delete_resident_dialog(),
+        _reject_request_dialog(),
+        rx.match(
+            UKAdminState.residents_view,
+            ("services", _services_list()),
+            ("addresses", _addresses_list()),
+            ("editor", _address_editor()),
+            ("residents", _residents_list()),
+            ("resident_detail", _resident_detail()),
+            ("requests", _requests_list()),
+            _residents_menu(),
+        ),
+    )
+
+
 def management_tab() -> rx.Component:
     return rx.fragment(
         rx.cond(AuthState.is_uk, _reject_reason_dialog()),
@@ -3959,6 +4405,7 @@ def management_tab() -> rx.Component:
                 _management_menu(),
             )),
             ("settings", _settings_screen()),
+            ("residents", _residents_hub()),
             _management_menu(),
         ),
     )
