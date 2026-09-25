@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import List, Optional
 
 import reflex as rx
@@ -58,6 +59,11 @@ class UKAdminState(AuthState):
     selected_building_id: str = ""
     confirm_regenerate_entrance_id: int = 0
 
+    # --- модальное окно «Пригласить соседей» (A03–A05), сразу после
+    # создания дома: "" — скрыто, "code" — карточка с кодом, "qr" — QR.
+    invite_modal_view: str = ""
+    invite_code_copied: bool = False
+
     set_new_building_address = make_setter("new_building_address")
     set_new_entrance_building_id = make_setter("new_entrance_building_id")
     set_new_entrance_number = make_setter("new_entrance_number")
@@ -80,6 +86,12 @@ class UKAdminState(AuthState):
             if e.id == target:
                 return e
         return None
+
+    @rx.var
+    def invite_entrance(self) -> Optional[EntranceItem]:
+        """Подъезд для модалки «Пригласить соседей» — сразу после
+        создания дома он у тенанта ровно один."""
+        return self.entrances[0] if self.entrances else None
 
     @rx.event
     def load_admin_data(self):
@@ -190,6 +202,70 @@ class UKAdminState(AuthState):
         # Keep FinanceState.entrance_options (used by the "new collection"
         # form) in sync — it's loaded independently of UKAdminState.
         return [UKAdminState.load_admin_data, FinanceState.load_uk_finance]
+
+    @rx.event
+    def open_invite_after_create(self):
+        """Once-эффект: сразу после «Создать дом» показывает A03 поверх
+        пустого дома (флаг взводит AuthState.create_home_confirm)."""
+        if self.show_invite_after_create:
+            self.show_invite_after_create = False
+            self.invite_modal_view = "code"
+
+    @rx.event
+    def close_invite_modal(self):
+        self.invite_modal_view = ""
+
+    @rx.event
+    def set_invite_modal_open(self, is_open: bool):
+        """on_open_change — закрытие по Esc/клику вне модалки."""
+        if not is_open:
+            self.invite_modal_view = ""
+
+    @rx.event
+    def show_invite_qr(self):
+        self.invite_modal_view = "qr"
+
+    @rx.event
+    def back_or_close_invite(self):
+        """Маленький шеврон «‹» вверху модалки: из QR (A05) — назад к коду
+        (A03), из кода — закрывает модалку целиком (там уже верхний уровень)."""
+        self.invite_modal_view = "code" if self.invite_modal_view == "qr" else ""
+
+    @rx.event
+    def copy_invite_code(self):
+        entrance = self.invite_entrance
+        if not entrance:
+            return
+        self.invite_code_copied = True
+        return [
+            rx.set_clipboard(entrance.invite_code_display),
+            UKAdminState.reset_invite_copied,
+        ]
+
+    @rx.event(background=True)
+    async def reset_invite_copied(self):
+        """Тост «Код скопирован» гаснет через 3 секунды (A04)."""
+        await asyncio.sleep(3)
+        async with self:
+            self.invite_code_copied = False
+
+    @rx.event
+    def share_invite(self):
+        entrance = self.invite_entrance
+        if not entrance:
+            return
+        payload = json.dumps(
+            {
+                "title": "Приглашение в дом",
+                "text": f"Код дома: {entrance.invite_code_display}",
+                "url": entrance.join_url,
+            }
+        )
+        url_js = json.dumps(entrance.join_url)
+        return rx.call_script(
+            f"navigator.share ? navigator.share({payload}).catch(() => {{}}) "
+            f": navigator.clipboard.writeText({url_js})"
+        )
 
     @rx.event
     def mark_copied(self, entrance_id: int):

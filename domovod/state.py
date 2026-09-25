@@ -65,6 +65,10 @@ class AuthState(rx.State):
     create_full_name: str = ""
     create_apartment: str = ""
     create_error: str = ""
+    # Взводится create_home_confirm и один раз считывается UKAdminState на
+    # /uk, чтобы сразу показать экран «Пригласить соседей» (A03) поверх
+    # пустого дома — так же, как в сценарии спеки «Дом создан — зовём соседей».
+    show_invite_after_create: bool = False
 
     # --- экран «Присоединиться» (J01–J03, ручной ввод кода дома): одно
     # поле на 6 символов (3 буквы + 3 цифры), храним уже без пробела —
@@ -88,7 +92,9 @@ class AuthState(rx.State):
 
     @rx.var
     def create_home_ready(self) -> bool:
-        return bool(self.create_address.strip()) and bool(self.create_entrance_number.strip())
+        """Только адрес обязателен — подъезд, имя и квартира опциональны
+        (макет A02: «Подъезд, корпус — если есть»)."""
+        return bool(self.create_address.strip())
 
     @rx.var
     def is_uk(self) -> bool:
@@ -299,11 +305,14 @@ class AuthState(rx.State):
         подъезде и как житель."""
         self.create_error = ""
         address = self.create_address.strip()
-        entrance_number_raw = self.create_entrance_number.strip()
-        if not address or not entrance_number_raw:
-            self.create_error = "Укажите название дома и подъезд"
+        if not address:
+            self.create_error = "Укажите адрес дома"
             return
-        entrance_number = int(entrance_number_raw)
+        # Подъезд необязателен (макет A02: «Подъезд, корпус — если есть»),
+        # поле свободного текста — берём из него цифры, а если их нет,
+        # считаем это первым (и пока единственным) подъездом.
+        digits = "".join(ch for ch in self.create_entrance_number if ch.isdigit())
+        entrance_number = int(digits) if digits else 1
         full_name = self.create_full_name.strip()
         apartment = self.create_apartment.strip()
         with get_session() as session:
@@ -346,6 +355,7 @@ class AuthState(rx.State):
         self.user_id = tenant_id
         self.tenant_id = tenant_id
         self.display_name = tenant_name
+        self.show_invite_after_create = True
         return rx.redirect("/uk")
 
     @rx.event

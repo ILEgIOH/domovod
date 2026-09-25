@@ -36,6 +36,7 @@ app.add_page(
         NewsState.load_news,
         NewsState.start_live,
         UKAdminState.load_admin_data,
+        UKAdminState.open_invite_after_create,
         UKAdminState.start_live,
         FinanceState.load_uk_finance,
         FinanceState.start_live,
