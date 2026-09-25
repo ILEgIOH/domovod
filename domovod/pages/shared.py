@@ -13,6 +13,7 @@ from ..state_finance import FinanceState
 from ..state_news import ICON_CHOICES, NewsState
 from ..state_proposals import ProposalsState
 from ..state_uk_admin import UKAdminState
+from ..tab_state import TabState
 from ..ui import (
     BRAND_ACTION_TEXT,
     BRAND_NEON,
@@ -2934,8 +2935,18 @@ def _management_menu() -> rx.Component:
         ),
         _management_menu_item("door-open", "Заявки в дом", "Скоро"),
         _management_menu_item("megaphone", "Объявления", "Вода, свет, лифт и другие события"),
-        _management_menu_item("users", "Жильцы и контакты", "Список жильцов и администраторов"),
-        _management_menu_item("link", "Приглашения", "Код, ссылка и QR"),
+        _management_menu_item(
+            "users",
+            "Жильцы и контакты",
+            "Список жильцов и администраторов",
+            on_click=TabState.set_uk_tab("contacts"),
+        ),
+        _management_menu_item(
+            "link",
+            "Приглашения",
+            "Код, ссылка и QR",
+            on_click=TabState.set_uk_tab("contacts"),
+        ),
         _management_menu_item("settings", "Настройки дома", "Адрес и управление домом"),
         width="100%",
         spacing="2",
