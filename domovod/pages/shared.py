@@ -3248,7 +3248,12 @@ def _management_menu() -> rx.Component:
             "Код, ссылка и QR",
             on_click=TabState.set_uk_tab("contacts"),
         ),
-        _management_menu_item("settings", "Настройки дома", "Адрес и управление домом"),
+        _management_menu_item(
+            "settings",
+            "Настройки дома",
+            "Адрес и управление домом",
+            on_click=[UKAdminState.open_settings, AuthState.set_management_view("settings")],
+        ),
         width="100%",
         spacing="2",
         align="start",
@@ -3653,6 +3658,191 @@ def _review_poll_screen() -> rx.Component:
     )
 
 
+def _settings_header(title: str) -> rx.Component:
+    return rx.hstack(
+        rx.icon(
+            "chevron-left",
+            size=22,
+            color="var(--gray-11)",
+            cursor="pointer",
+            on_click=[UKAdminState.open_settings, AuthState.set_management_view("settings")],
+        ),
+        rx.heading(title, size="5", weight="bold"),
+        spacing="2",
+        align="center",
+        margin_bottom="0.75rem",
+    )
+
+
+def _settings_menu_item(icon: str, title: str, subtitle, on_click=None) -> rx.Component:
+    return section_card(
+        rx.hstack(
+            rx.icon(icon, size=20, color=BRAND_PURPLE if on_click else "var(--gray-8)"),
+            rx.vstack(
+                rx.text(
+                    title,
+                    size="3",
+                    weight="bold",
+                    color=TEXT_PRIMARY if on_click else "var(--gray-9)",
+                ),
+                rx.text(subtitle, size="2", color="var(--gray-9)"),
+                spacing="0",
+                align="start",
+            ),
+            rx.spacer(),
+            rx.icon("chevron-right", size=16, color="var(--gray-8)")
+            if on_click
+            else rx.text("Скоро", size="1", color="var(--gray-8)"),
+            width="100%",
+            align="center",
+            spacing="3",
+        ),
+        cursor="pointer" if on_click else "default",
+        on_click=on_click,
+        opacity="1" if on_click else "0.55",
+    )
+
+
+def _settings_menu() -> rx.Component:
+    """N01 — «Настройки дома»."""
+    entrance = UKAdminState.current_entrance
+    return rx.vstack(
+        rx.hstack(
+            rx.icon(
+                "chevron-left",
+                size=22,
+                color="var(--gray-11)",
+                cursor="pointer",
+                on_click=AuthState.set_management_view("menu"),
+            ),
+            rx.heading("Настройки дома", size="5", weight="bold"),
+            spacing="2",
+            align="center",
+            margin_bottom="0.25rem",
+        ),
+        rx.text("Доступно администраторам", size="2", color="var(--gray-9)", margin_bottom="0.75rem"),
+        rx.cond(
+            entrance,
+            rx.fragment(
+                _settings_menu_item(
+                    "map-pin",
+                    "Адрес и название",
+                    entrance.building_address,
+                    on_click=UKAdminState.open_edit_address,
+                ),
+                _settings_menu_item("building-2", "Подъезд и корпус", "Подъезд " + entrance.number.to_string()),
+            ),
+        ),
+        _settings_menu_item("users", "Администраторы", "Скоро"),
+        rx.text("Опасная зона", size="2", weight="bold", color="var(--red-9)", margin_top="1rem", margin_bottom="0.4rem"),
+        rx.box(
+            rx.text("Удалить дом", weight="bold", color="var(--red-9)", text_align="center"),
+            width="100%",
+            background="var(--red-3)",
+            border_radius="14px",
+            padding="0.9rem",
+            cursor="pointer",
+            on_click=UKAdminState.open_delete_home,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _settings_edit_address() -> rx.Component:
+    """N03 — редактирование адреса дома."""
+    return rx.vstack(
+        _settings_header("Данные дома"),
+        error_text(UKAdminState.edit_error),
+        field_label("Адрес"),
+        rx.input(
+            value=UKAdminState.edit_address_input,
+            on_change=UKAdminState.set_edit_address_input,
+            width="100%",
+            margin_bottom="0.8rem",
+            auto_focus=True,
+        ),
+        rx.text(
+            "Адрес всегда виден в приглашении и помогает переключаться между домами.",
+            size="2",
+            color="var(--gray-9)",
+            margin_bottom="1rem",
+        ),
+        rx.button(
+            "Сохранить",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=UKAdminState.save_address,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _settings_delete_home() -> rx.Component:
+    """N06/N07 — удаление дома с подтверждением фразой."""
+    return rx.vstack(
+        _settings_header("Удаление дома"),
+        rx.box(
+            rx.text("Дом и все его данные будут удалены", weight="bold", color="var(--red-9)", margin_bottom="0.3rem"),
+            rx.text(
+                "Публикации, контакты и доступ жителей. Отменить нельзя.",
+                size="2",
+                color="var(--red-9)",
+            ),
+            width="100%",
+            background="var(--red-3)",
+            border_radius="14px",
+            padding="1rem",
+            margin_bottom="1rem",
+        ),
+        rx.text('Для подтверждения введите «УДАЛИТЬ ДОМ».', size="2", margin_bottom="0.4rem"),
+        field_label("Подтверждение"),
+        rx.input(
+            value=UKAdminState.delete_confirm_input,
+            on_change=UKAdminState.set_delete_confirm_input,
+            placeholder="Введите фразу",
+            width="100%",
+            margin_bottom="1rem",
+        ),
+        rx.button(
+            "Удалить дом навсегда",
+            width="100%",
+            size="3",
+            radius="full",
+            disabled=UKAdminState.delete_ready == False,  # noqa: E712
+            style=rx.cond(
+                UKAdminState.delete_ready,
+                {"background": "var(--red-9)", "color": "white"},
+                {"background": "var(--gray-4)", "color": "var(--gray-9)"},
+            ),
+            on_click=UKAdminState.confirm_delete_home,
+            margin_bottom="0.5rem",
+        ),
+        rx.button(
+            "Отмена",
+            width="100%",
+            size="3",
+            radius="full",
+            variant="soft",
+            on_click=UKAdminState.open_settings,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _settings_screen() -> rx.Component:
+    return rx.match(
+        UKAdminState.settings_view,
+        ("edit_address", _settings_edit_address()),
+        ("delete", _settings_delete_home()),
+        _settings_menu(),
+    )
+
+
 def management_tab() -> rx.Component:
     return rx.fragment(
         rx.cond(AuthState.is_uk, _reject_reason_dialog()),
@@ -3666,6 +3856,7 @@ def management_tab() -> rx.Component:
                 ("poll", _review_poll_screen()),
                 _management_menu(),
             )),
+            ("settings", _settings_screen()),
             _management_menu(),
         ),
     )
