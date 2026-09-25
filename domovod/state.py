@@ -70,6 +70,15 @@ class AuthState(rx.State):
     # пустого дома — так же, как в сценарии спеки «Дом создан — зовём соседей».
     show_invite_after_create: bool = False
 
+    # --- вкладка «Управление» (M02/M03/M04), только у УК: "menu" — список
+    # разделов, "proposals" — входящие предложения жильцов, "review" —
+    # проверка/правка конкретной заявки. Живёт в AuthState (а не в
+    # UKAdminState), чтобы FinanceState/CommunityState могли сами
+    # переключать её после публикации без циклического импорта.
+    management_view: str = "menu"
+    proposal_filter: str = "all"  # "all" | "collection" | "initiative" | "poll"
+    review_kind: str = ""  # "collection" | "initiative" | "poll" — что сейчас на M04
+
     # --- мастер предложения (F01–F13): резидент предлагает сбор/
     # инициативу/опрос на модерацию УК. Шаг живёт тут, сами поля формы —
     # в new_col_*/new_initiative_*/new_poll_* (FinanceState/CommunityState).
@@ -103,6 +112,14 @@ class AuthState(rx.State):
 
     set_auth_view = make_setter("auth_view")
     set_res_household_size = make_setter("res_household_size")
+    set_management_view = make_setter("management_view")
+    set_proposal_filter = make_setter("proposal_filter")
+    set_review_kind = make_setter("review_kind")
+
+    @rx.event
+    def open_management_proposals(self):
+        self.proposal_filter = "all"
+        self.management_view = "proposals"
 
     @rx.var
     def create_home_ready(self) -> bool:

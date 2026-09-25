@@ -156,6 +156,7 @@ class ProposalsState(AuthState):
         self.reject_target_id = 0
         self.reject_target_title = ""
         self.reject_reason_input = ""
+        self.management_view = "proposals"
         if kind == "collection":
             return FinanceState.reject_collection(target_id, reason)
         if kind == "initiative":

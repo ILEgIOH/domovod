@@ -65,21 +65,12 @@ class UKAdminState(AuthState):
 
     # --- вкладка «Управление» (M02/M03): "menu" — список разделов,
     # "proposals" — входящие предложения жильцов на модерации.
-    management_view: str = "menu"
-    proposal_filter: str = "all"  # "all" | "collection" | "initiative" | "poll"
     invite_code_copied: bool = False
 
     set_new_building_address = make_setter("new_building_address")
     set_new_entrance_building_id = make_setter("new_entrance_building_id")
     set_new_entrance_number = make_setter("new_entrance_number")
     set_selected_building_id = make_setter("selected_building_id")
-    set_management_view = make_setter("management_view")
-    set_proposal_filter = make_setter("proposal_filter")
-
-    @rx.event
-    def open_management_proposals(self):
-        self.proposal_filter = "all"
-        self.management_view = "proposals"
 
     @rx.var
     def visible_entrances(self) -> List[EntranceItem]:
