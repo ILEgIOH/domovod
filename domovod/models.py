@@ -112,11 +112,14 @@ class Collection(SQLModel, table=True):
     tenant_id: int = Field(index=True)
     title: str
     description: str = ""
+    instructions: str = ""
     category: str = "ЖКХ"
+    amount_mode: str = "per_apartment"  # "per_apartment" | "total" (F02/F04)
     target_amount: float = 0
     end_date: Optional[datetime] = None
-    status: str = "published"  # "proposed" | "published"
+    status: str = "published"  # "proposed" | "published" | "rejected"
     proposed_by_resident_id: Optional[int] = None
+    rejection_reason: str = ""
     is_active: bool = True
     created_at: datetime = Field(default_factory=now_utc)
 
@@ -145,6 +148,9 @@ class Initiative(SQLModel, table=True):
     needed_count: int = 0
     author_name: str = ""
     event_date: str = ""
+    status: str = "published"  # "proposed" | "published" | "rejected"
+    proposed_by_resident_id: Optional[int] = None
+    rejection_reason: str = ""
     is_active: bool = True
     created_at: datetime = Field(default_factory=now_utc)
 
@@ -170,6 +176,10 @@ class Poll(SQLModel, table=True):
     author_name: str = ""
     end_date: Optional[datetime] = None
     allow_multiple: bool = False
+    allow_vote_change: bool = True
+    status: str = "published"  # "proposed" | "published" | "rejected"
+    proposed_by_resident_id: Optional[int] = None
+    rejection_reason: str = ""
     is_active: bool = True
     created_at: datetime = Field(default_factory=now_utc)
 
