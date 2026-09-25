@@ -861,6 +861,30 @@ def _debts_block() -> rx.Component:
     )
 
 
+def _create_dialog_content() -> rx.Component:
+    return rx.dialog.content(
+        rx.dialog.title("Создать"),
+        rx.tabs.root(
+            rx.tabs.list(
+                rx.tabs.trigger("Объявление", value="news"),
+                rx.tabs.trigger("Сбор", value="col"),
+                rx.tabs.trigger("Начисление", value="debt"),
+                rx.tabs.trigger("Инициатива", value="init"),
+                rx.tabs.trigger("Опрос", value="poll"),
+                style={"overflow_x": "auto", "flex_wrap": "nowrap"},
+            ),
+            rx.tabs.content(_announcement_form(), value="news", padding_top="0.8rem"),
+            rx.tabs.content(_collection_form(), value="col", padding_top="0.8rem"),
+            rx.tabs.content(_debt_form(), value="debt", padding_top="0.8rem"),
+            rx.tabs.content(_initiative_form(), value="init", padding_top="0.8rem"),
+            rx.tabs.content(_poll_form(), value="poll", padding_top="0.8rem"),
+            default_value="news",
+            width="100%",
+        ),
+        max_width="380px",
+    )
+
+
 def _create_section() -> rx.Component:
     return rx.hstack(
         rx.heading("Создать", size="4"),
@@ -879,30 +903,66 @@ def _create_section() -> rx.Component:
                     cursor="pointer",
                 ),
             ),
-            rx.dialog.content(
-                rx.dialog.title("Создать"),
-                rx.tabs.root(
-                    rx.tabs.list(
-                        rx.tabs.trigger("Объявление", value="news"),
-                        rx.tabs.trigger("Сбор", value="col"),
-                        rx.tabs.trigger("Начисление", value="debt"),
-                        rx.tabs.trigger("Инициатива", value="init"),
-                        rx.tabs.trigger("Опрос", value="poll"),
-                        style={"overflow_x": "auto", "flex_wrap": "nowrap"},
-                    ),
-                    rx.tabs.content(_announcement_form(), value="news", padding_top="0.8rem"),
-                    rx.tabs.content(_collection_form(), value="col", padding_top="0.8rem"),
-                    rx.tabs.content(_debt_form(), value="debt", padding_top="0.8rem"),
-                    rx.tabs.content(_initiative_form(), value="init", padding_top="0.8rem"),
-                    rx.tabs.content(_poll_form(), value="poll", padding_top="0.8rem"),
-                    default_value="news",
-                    width="100%",
-                ),
-                max_width="380px",
-            ),
+            _create_dialog_content(),
         ),
         width="100%",
         align="center",
+    )
+
+
+def _create_section_pill() -> rx.Component:
+    """H03: полный pill «+ Создать» под пустыми разделами, вместо кружка."""
+    return rx.dialog.root(
+        rx.dialog.trigger(
+            rx.box(
+                rx.text("+ Создать", weight="bold", text_align="center", color=BRAND_ACTION_TEXT),
+                width="100%",
+                background=BRAND_PURPLE_TINT,
+                border_radius="999px",
+                padding="0.9rem",
+                cursor="pointer",
+            ),
+        ),
+        _create_dialog_content(),
+        width="100%",
+    )
+
+
+def _empty_home_hero() -> rx.Component:
+    """H03: полностью пустой дом — крупная плашка вместо ленты объявлений."""
+    return rx.vstack(
+        rx.icon("house", size=40, color=BRAND_PURPLE),
+        rx.heading("Ваш дом здесь", size="5", weight="bold", margin_top="0.4rem"),
+        rx.text(
+            "Начните с идеи или найдите нужный контакт.",
+            size="2",
+            color="var(--gray-9)",
+            text_align="center",
+        ),
+        align="center",
+        spacing="1",
+        width="100%",
+        background=BRAND_PURPLE_TINT,
+        border_radius="20px",
+        padding="2.2rem 1rem",
+    )
+
+
+def _empty_section_row(title: str, subtitle: str) -> rx.Component:
+    return rx.hstack(
+        rx.vstack(
+            rx.text(title, size="3", weight="bold"),
+            rx.text(subtitle, size="2", color="var(--gray-9)"),
+            spacing="0",
+            align="start",
+        ),
+        rx.spacer(),
+        rx.icon("chevron-right", size=18, color="var(--gray-9)"),
+        width="100%",
+        align="center",
+        background="white",
+        border_radius="16px",
+        padding="0.9rem 1rem",
     )
 
 
@@ -1065,21 +1125,52 @@ def _invite_after_create_modal() -> rx.Component:
 
 
 def home_tab() -> rx.Component:
+    collections_count = rx.cond(
+        AuthState.is_uk,
+        FinanceState.home_published_collections.length(),
+        FinanceState.my_collections.length(),
+    )
+    debts_count = rx.cond(
+        AuthState.is_uk,
+        FinanceState.home_active_debts.length() + FinanceState.home_paid_debts.length(),
+        FinanceState.active_my_debts.length() + FinanceState.paid_my_debts.length(),
+    )
+    # H03: пока в доме вообще ничего нет — крупная плашка-иллюстрация вместо
+    # пяти отдельных «пока нет», как в заполненном состоянии (H01).
+    home_is_empty = (
+        (NewsState.news_items.length() == 0)
+        & (collections_count == 0)
+        & (CommunityState.initiatives.length() == 0)
+        & (CommunityState.polls.length() == 0)
+        & (debts_count == 0)
+    )
     return rx.vstack(
         rx.cond(AuthState.is_uk, _invite_after_create_modal()),
         _identity_card(),
         _home_header(),
         rx.cond(
             AuthState.viewing_entrance_id != 0,
-            rx.vstack(
-                _announcements_row(),
-                _collections_section(),
-                _initiatives_block(),
-                _polls_block(),
-                _debts_block(),
-                rx.cond(AuthState.is_uk, _create_section()),
-                width="100%",
-                spacing="4",
+            rx.cond(
+                home_is_empty,
+                rx.vstack(
+                    _empty_home_hero(),
+                    _empty_section_row("Сборов пока нет", "Предложите то, что нужно дому"),
+                    _empty_section_row("Инициатив пока нет", "Предложите то, что нужно дому"),
+                    _empty_section_row("Опросов пока нет", "Предложите то, что нужно дому"),
+                    rx.cond(AuthState.is_uk, _create_section_pill()),
+                    width="100%",
+                    spacing="3",
+                ),
+                rx.vstack(
+                    _announcements_row(),
+                    _collections_section(),
+                    _initiatives_block(),
+                    _polls_block(),
+                    _debts_block(),
+                    rx.cond(AuthState.is_uk, _create_section()),
+                    width="100%",
+                    spacing="4",
+                ),
             ),
         ),
         width="100%",
