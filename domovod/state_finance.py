@@ -100,8 +100,10 @@ class FinanceState(AuthState):
     new_col_title: str = ""
     new_col_description: str = ""
     new_col_category: str = "ЖКХ"
+    new_col_mode: str = "per_apartment"  # "per_apartment" | "total" (M14)
     new_col_amount: str = ""
     new_col_end_date: str = ""
+    new_col_instructions: str = ""
     col_error: str = ""
 
     propose_col_title: str = ""
@@ -221,8 +223,10 @@ class FinanceState(AuthState):
     set_new_col_title = make_setter("new_col_title")
     set_new_col_description = make_setter("new_col_description")
     set_new_col_category = make_setter("new_col_category")
+    set_new_col_mode = make_setter("new_col_mode")
     set_new_col_amount = make_setter("new_col_amount")
     set_new_col_end_date = make_setter("new_col_end_date")
+    set_new_col_instructions = make_setter("new_col_instructions")
     set_propose_col_title = make_setter("propose_col_title")
     set_propose_col_mode = make_setter("propose_col_mode")
     set_propose_col_description = make_setter("propose_col_description")
@@ -414,8 +418,10 @@ class FinanceState(AuthState):
                     title=self.new_col_title.strip(),
                     description=self.new_col_description.strip(),
                     category=self.new_col_category,
+                    amount_mode=self.new_col_mode,
                     target_amount=amount,
                     end_date=self._parse_date(self.new_col_end_date),
+                    instructions=self.new_col_instructions.strip(),
                     status="published",
                     is_active=True,
                 )
@@ -423,8 +429,10 @@ class FinanceState(AuthState):
             session.commit()
         self.new_col_title = ""
         self.new_col_description = ""
+        self.new_col_mode = "per_apartment"
         self.new_col_amount = ""
         self.new_col_end_date = ""
+        self.new_col_instructions = ""
         return FinanceState.load_uk_finance
 
     @rx.event
