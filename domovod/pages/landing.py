@@ -14,12 +14,14 @@ def _splash_view() -> rx.Component:
     return rx.vstack(
         rx.spacer(),
         rx.vstack(
+            rx.image(src="/logo.png", width="96px", height="96px", style={"objectFit": "contain"}),
             rx.heading(
                 "Дом – это проще, когда все рядом",
                 size="7",
                 weight="bold",
                 text_align="center",
                 line_height="1.3",
+                margin_top="1rem",
             ),
             rx.text(
                 "Сборы, инициативы, опросы и контакты — в одном месте",

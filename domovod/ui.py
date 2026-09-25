@@ -39,19 +39,16 @@ def phone_shell(*children, header: rx.Component | None = None) -> rx.Component:
     )
 
 
-def brand_icon(size: int = 18, padding: str = "0.45rem") -> rx.Component:
-    """Логотип — белый дом на зелёном круге. Пока просто ведёт на главную;
-    в будущем здесь будет переход в Telegram-бота для вызова служб дома."""
+def brand_icon(size: int = 32) -> rx.Component:
+    """Логотип — мягкая арка-дом (Purple + Neon) из макета дизайнера.
+    Пока просто ведёт на главную; в будущем здесь будет переход в
+    Telegram-бота для вызова служб дома."""
     return rx.link(
-        rx.box(
-            rx.icon("house", size=size, color="white"),
-            background="var(--accent-9)",
-            padding=padding,
-            border_radius="999px",
-            display="flex",
-            align_items="center",
-            justify_content="center",
-            line_height="0",
+        rx.image(
+            src="/logo.png",
+            width=f"{size}px",
+            height=f"{size}px",
+            style={"objectFit": "contain"},
         ),
         href="/",
     )
