@@ -1,9 +1,10 @@
-"""Кабинет жителя — «Дом» и «Контакты»."""
+"""Кабинет жителя — «Дом» и «Контакты» (плюс «Управление» у соадминов, R08/R09)."""
 
 from __future__ import annotations
 
 import reflex as rx
 
+from ..state import AuthState
 from ..tab_state import TabState
 from ..ui import bottom_tabs, phone_shell, top_bar
 from . import shared
@@ -11,6 +12,7 @@ from . import shared
 RESIDENT_TABS = [
     ("home", "Дом", "house"),
     ("contacts", "Контакты", "users"),
+    ("management", "Управление", "settings", AuthState.resident_is_admin),
 ]
 
 
@@ -18,6 +20,10 @@ def resident_dashboard() -> rx.Component:
     body = rx.match(
         TabState.resident_tab,
         ("contacts", shared.contacts_tab()),
+        # Права могли снять, пока вкладка ещё была открыта — тогда просто
+        # показываем «Дом», а не оставляем управление доступным по старому
+        # значению TabState.
+        ("management", rx.cond(AuthState.resident_is_admin, shared.management_tab(), shared.home_tab())),
         shared.home_tab(),
     )
     return phone_shell(

@@ -178,15 +178,26 @@ def join_page() -> rx.Component:
     return rx.box(
         rx.box(
             rx.cond(
-                AuthState.is_resident,
-                _already_signed_in_view(),
+                AuthState.join_pending,
+                _pending_view(),
                 rx.cond(
-                    AuthState.join_pending,
-                    _pending_view(),
+                    # P04: уже вошедший житель может присоединиться ещё к
+                    # одному дому — тогда join_via_code находит НОВЫЙ, ещё
+                    # не открытый подъезд и не редиректит, а готовит форму
+                    # (join_address). Показать её нужно раньше общей
+                    # проверки is_resident, иначе он всегда видел бы
+                    # «Вы уже вошли» и не смог бы присоединиться к второму
+                    # дому.
+                    AuthState.join_address != "",
+                    _join_form(),
                     rx.cond(
-                        AuthState.join_error != "",
-                        _error_view(),
-                        _join_form(),
+                        AuthState.is_resident,
+                        _already_signed_in_view(),
+                        rx.cond(
+                            AuthState.join_error != "",
+                            _error_view(),
+                            _join_form(),
+                        ),
                     ),
                 ),
             ),

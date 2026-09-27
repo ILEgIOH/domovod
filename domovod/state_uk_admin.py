@@ -70,6 +70,7 @@ class ResidentItem(BaseModel):
     building_address: str
     submitted_fmt: str = ""
     pending_apartment: str = ""
+    is_admin: bool = False
 
 
 class UKAdminState(AuthState):
@@ -164,7 +165,7 @@ class UKAdminState(AuthState):
 
     @rx.event
     def load_admin_data(self):
-        if not self.tenant_id:
+        if not self.tenant_id or not self.has_admin_access:
             return
         with get_session() as session:
             building_rows = session.exec(
@@ -222,6 +223,7 @@ class UKAdminState(AuthState):
                     building_address=building_map.get(ent.building_id, "?") if ent else "?",
                     submitted_fmt=_fmt_submitted(r.created_at),
                     pending_apartment=r.pending_apartment,
+                    is_admin=r.is_admin,
                 )
                 if r.status == "pending":
                     pending_items.append(item)
@@ -560,6 +562,35 @@ class UKAdminState(AuthState):
                 session.commit()
         return UKAdminState.load_admin_data
 
+    # ---------------- R08/R09/R12: права соадминистратора у жителя --------
+
+    @rx.event
+    def grant_admin_rights(self, resident_id: int):
+        """Только настоящий УК (не соадмин) назначает и снимает права —
+        иначе соадмины могли бы бесконтрольно повышать и понижать друг
+        друга и даже сами себя."""
+        if not self.is_uk:
+            return
+        with get_session() as session:
+            r = session.get(Resident, resident_id)
+            if r and r.tenant_id == int(self.tenant_id):
+                r.is_admin = True
+                session.add(r)
+                session.commit()
+        return UKAdminState.load_admin_data
+
+    @rx.event
+    def revoke_admin_rights(self, resident_id: int):
+        if not self.is_uk:
+            return
+        with get_session() as session:
+            r = session.get(Resident, resident_id)
+            if r and r.tenant_id == int(self.tenant_id):
+                r.is_admin = False
+                session.add(r)
+                session.commit()
+        return UKAdminState.load_admin_data
+
     @rx.event
     def stop_live(self):
         self.is_live = False
@@ -569,7 +600,7 @@ class UKAdminState(AuthState):
         """Периодически обновляет список жителей/подъездов, чтобы новые
         регистрации по QR/ссылке были видны УК без обновления страницы."""
         async with self:
-            if self.is_live or not self.tenant_id:
+            if self.is_live or not self.tenant_id or not self.has_admin_access:
                 return
             self.is_live = True
         try:

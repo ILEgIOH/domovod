@@ -69,7 +69,11 @@ class Resident(SQLModel, table=True):
     # его личность подтверждает MAX (пока — заглушка max_user_id).
     phone: Optional[str] = Field(default=None, unique=True, index=True)
     password_hash: Optional[str] = Field(default=None)
-    max_user_id: Optional[str] = Field(default=None, unique=True, index=True)
+    # Не unique: один и тот же человек/устройство может состоять больше
+    # чем в одном доме (P04 «Переключить дом») — тогда max_user_id
+    # повторяется в нескольких строках Resident с разными entrance_id.
+    # Поиск конкретного жителя всегда доп. фильтруется по entrance_id.
+    max_user_id: Optional[str] = Field(default=None, index=True)
     # R06: когда квартиру уже занял другой житель, новый заявитель ждёт
     # подтверждения администратора вместо мгновенного входа. "active" —
     # обычный житель, "pending" — заявка на рассмотрении.
@@ -78,6 +82,9 @@ class Resident(SQLModel, table=True):
     # активной заявки на смену; сам resident.apartment не меняется, пока
     # УК не одобрит (см. UKAdminState.approve_apartment_change).
     pending_apartment: str = ""
+    # R08/R09/R12: житель с правами соадминистратора — видит и может
+    # использовать вкладку «Управление» наравне с УК в своём доме.
+    is_admin: bool = False
     created_at: datetime = Field(default_factory=now_utc)
 
 

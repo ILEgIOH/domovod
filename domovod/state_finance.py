@@ -244,7 +244,7 @@ class FinanceState(AuthState):
 
     @rx.event
     def load_uk_finance(self):
-        if not self.tenant_id:
+        if not self.tenant_id or not self.has_admin_access:
             return
         with get_session() as session:
             residents = session.exec(
@@ -790,6 +790,10 @@ class FinanceState(AuthState):
                         yield FinanceState.load_uk_finance
                     elif self.is_resident:
                         yield FinanceState.load_resident_finance
+                        if self.has_admin_access:
+                            # R08/R09: соадмин — тоже resident, ему нужны
+                            # оба набора данных.
+                            yield FinanceState.load_uk_finance
         finally:
             async with self:
                 self.is_live = False

@@ -55,6 +55,11 @@ app.add_page(
         AuthState.refresh_resident_session,
         NewsState.load_news,
         NewsState.start_live,
+        # R08/R09: соадминские загрузчики сами проверяют has_admin_access
+        # и молча ничего не делают для обычного жителя.
+        UKAdminState.load_admin_data,
+        UKAdminState.start_live,
+        FinanceState.load_uk_finance,
         FinanceState.load_resident_finance,
         FinanceState.start_live,
         CommunityState.load_community,

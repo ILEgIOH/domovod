@@ -92,32 +92,41 @@ def top_bar(title: str, subtitle: str = "", right: rx.Component | None = None) -
     )
 
 
-def bottom_tabs(items: list[tuple[str, str, str]], value: rx.Var, on_change) -> rx.Component:
-    """items: list of (tab_value, label, icon_tag)."""
+def bottom_tabs(items: list, value: rx.Var, on_change) -> rx.Component:
+    """items: list of (tab_value, label, icon_tag), or (tab_value, label,
+    icon_tag, visible) when a tab should only render conditionally — e.g.
+    «Управление» for a resident who is a co-admin (R08/R09/R12)."""
+
+    def _tab_button(val: str, label: str, icon: str) -> rx.Component:
+        return rx.el.button(
+            rx.vstack(
+                rx.icon(icon, size=20),
+                rx.text(label, size="1"),
+                spacing="1",
+                align="center",
+            ),
+            on_click=on_change(val),
+            style={
+                "flex": "1",
+                "background": "transparent",
+                "border": "none",
+                "cursor": "pointer",
+                "padding": "0.5rem 0",
+                "color": rx.cond(
+                    value == val, "var(--accent-9)", "var(--gray-9)"
+                ),
+            },
+        )
+
+    def _tab(item) -> rx.Component:
+        val, label, icon = item[0], item[1], item[2]
+        if len(item) > 3 and item[3] is not None:
+            return rx.cond(item[3], _tab_button(val, label, icon), rx.fragment())
+        return _tab_button(val, label, icon)
+
     return rx.box(
         rx.hstack(
-            *[
-                rx.el.button(
-                    rx.vstack(
-                        rx.icon(icon, size=20),
-                        rx.text(label, size="1"),
-                        spacing="1",
-                        align="center",
-                    ),
-                    on_click=on_change(val),
-                    style={
-                        "flex": "1",
-                        "background": "transparent",
-                        "border": "none",
-                        "cursor": "pointer",
-                        "padding": "0.5rem 0",
-                        "color": rx.cond(
-                            value == val, "var(--accent-9)", "var(--gray-9)"
-                        ),
-                    },
-                )
-                for val, label, icon in items
-            ],
+            *[_tab(item) for item in items],
             width="100%",
             spacing="0",
         ),

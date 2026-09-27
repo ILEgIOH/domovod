@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import secrets
+from typing import List
 
 import reflex as rx
+from pydantic import BaseModel
 from reflex.event import KeyInputInfo
 from sqlmodel import select
 
@@ -13,6 +15,14 @@ from .max_stub import STUB_DISPLAY_NAME, generate_device_id
 from .models import Building, Entrance, Resident, Tenant
 from .security import hash_password
 from .setters import make_setter
+
+
+class HomeOption(BaseModel):
+    """P04 — один из домов, к которым присоединено это устройство."""
+
+    resident_id: int
+    label: str
+    is_current: bool
 
 # --- фиксированный демо-стенд для проверки в один клик, без ввода данных ---
 DEMO_UK_EMAIL = "demo-uk@domovod.test"
@@ -43,6 +53,9 @@ class AuthState(rx.State):
     # P03: новая квартира, отправленная на проверку администратору —
     # непусто, пока заявка не рассмотрена (см. Resident.pending_apartment).
     pending_apartment: str = rx.SessionStorage("")
+    # R08/R09/R12: житель с правами соадминистратора видит вкладку
+    # «Управление» наравне с УК в своём доме (см. Resident.is_admin).
+    resident_is_admin: bool = rx.SessionStorage(False)
 
     # Подъезд, для которого сейчас показывается общий экран «Дом»
     # (объявления/сборы/инициативы/опросы). У жителя всегда свой — не
@@ -89,11 +102,12 @@ class AuthState(rx.State):
     # --- P01/P02: «Ваш дом и профиль» (только у жителя) — меню профиля,
     # открывается по тапу на карточку личности вместо мгновенного выхода.
     show_profile_sheet: bool = False
-    profile_view: str = "menu"  # "menu" | "edit_name" | "change_apartment"
+    profile_view: str = "menu"  # "menu" | "edit_name" | "change_apartment" | "switch_home"
     edit_name_input: str = ""
     profile_error: str = ""
     apartment_change_input: str = ""
     leave_home_confirm: bool = False
+    switch_home_options: List[HomeOption] = []
 
     # --- мастер предложения (F01–F13): резидент предлагает сбор/
     # инициативу/опрос на модерацию УК. Шаг живёт тут, сами поля формы —
@@ -243,6 +257,51 @@ class AuthState(rx.State):
         self._reset_session()
         return rx.redirect("/")
 
+    # ---------------- P04: переключить дом (несколько записей Resident ----
+    # с одним max_user_id, у каждой — свой entrance_id) ---------------------
+
+    @rx.event
+    def open_switch_home(self):
+        if not self.is_resident or not self.max_device_id:
+            return
+        options = []
+        with get_session() as session:
+            rows = session.exec(
+                select(Resident).where(
+                    Resident.max_user_id == self.max_device_id,
+                    Resident.status == "active",
+                )
+            ).all()
+            for r in rows:
+                entrance = session.get(Entrance, r.entrance_id)
+                building = session.get(Building, entrance.building_id) if entrance else None
+                address = building.address if building else "?"
+                number = entrance.number if entrance else "?"
+                options.append(
+                    HomeOption(
+                        resident_id=r.id,
+                        label=f"{address} · подъезд {number} · квартира {r.apartment}",
+                        is_current=(r.id == int(self.user_id)),
+                    )
+                )
+        self.switch_home_options = options
+        self.profile_view = "switch_home"
+
+    @rx.event
+    def switch_to_home(self, resident_id: int):
+        """Переключение — это просто повторный «вход» в другую свою
+        запись Resident, тем же устройством (_login_resident_record)."""
+        with get_session() as session:
+            resident = session.get(Resident, resident_id)
+            if not resident or resident.max_user_id != self.max_device_id:
+                return
+            entrance = session.get(Entrance, resident.entrance_id)
+            if not entrance:
+                return
+            self._login_resident_record(resident, entrance)
+        self.show_profile_sheet = False
+        return rx.redirect("/app")
+
     @rx.event
     def open_management_proposals(self):
         self.proposal_filter = "all"
@@ -261,6 +320,14 @@ class AuthState(rx.State):
     @rx.var
     def is_resident(self) -> bool:
         return self.role == "resident" and self.user_id != 0
+
+    @rx.var
+    def has_admin_access(self) -> bool:
+        """R08/R09/R12: УК всегда, житель — только если ему назначили
+        права соадминистратора. Гейтит вкладку «Управление» и загрузку
+        админских данных — используется вместо is_uk везде, где решение
+        должно учитывать и соадминов."""
+        return self.is_uk or (self.is_resident and self.resident_is_admin)
 
     @rx.var
     def join_code_ready(self) -> bool:
@@ -282,6 +349,7 @@ class AuthState(rx.State):
         self.display_name = ""
         self.apartment = ""
         self.pending_apartment = ""
+        self.resident_is_admin = False
         self.viewing_entrance_id = 0
         self.home_label = ""
 
@@ -327,6 +395,7 @@ class AuthState(rx.State):
                 self.display_name = resident.full_name
                 self.apartment = resident.apartment
                 self.pending_apartment = resident.pending_apartment
+                self.resident_is_admin = resident.is_admin
 
     # ---------------- Житель: экран «Присоединиться» (ввод кода) ----------------
 
@@ -394,6 +463,7 @@ class AuthState(rx.State):
         self.display_name = resident.full_name
         self.apartment = resident.apartment
         self.pending_apartment = resident.pending_apartment
+        self.resident_is_admin = resident.is_admin
         self.viewing_entrance_id = resident.entrance_id
         with get_session() as session:
             building = session.get(Building, entrance.building_id)
@@ -582,16 +652,18 @@ class AuthState(rx.State):
     @rx.event
     def join_via_code(self):
         """Обрабатывает /join?code=...: если это устройство уже заходило
-        по этому приглашению — сразу авторизует (как в реальном MAX, где
+        именно в этот подъезд — сразу авторизует (как в реальном MAX, где
         личность приходит автоматически при каждом открытии мини-аппа).
         Иначе просит только квартиру — имя и id подставляет заглушка MAX.
-        """
+
+        Не проверяет is_resident заранее и не редиректит от него: жилец
+        другого дома может присоединиться ещё к одному (P04 «Переключить
+        дом») — тогда у него будет несколько записей Resident с одним
+        max_user_id, но разными entrance_id."""
         self.join_error = ""
         self.join_address = ""
         self.join_entrance_subtitle = ""
         self.join_pending = False
-        if self.is_resident:
-            return rx.redirect("/app")
         code = self.router.url.query_parameters.get("code", "").strip().upper()
         if not code:
             self.join_error = "В ссылке не указан код приглашения. Уточните её в управляющей компании."
@@ -607,7 +679,10 @@ class AuthState(rx.State):
                 return
 
             existing = session.exec(
-                select(Resident).where(Resident.max_user_id == self.max_device_id)
+                select(Resident).where(
+                    Resident.max_user_id == self.max_device_id,
+                    Resident.entrance_id == entrance.id,
+                )
             ).first()
             if existing:
                 if existing.status == "pending":
@@ -789,7 +864,10 @@ class AuthState(rx.State):
             tenant = self._ensure_demo_tenant(session)
             entrance = self._ensure_demo_entrance(session, tenant)
             resident = session.exec(
-                select(Resident).where(Resident.max_user_id == self.max_device_id)
+                select(Resident).where(
+                    Resident.max_user_id == self.max_device_id,
+                    Resident.entrance_id == entrance.id,
+                )
             ).first()
             if not resident:
                 resident = Resident(

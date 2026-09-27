@@ -2946,6 +2946,60 @@ def _confirm_leave_home_dialog() -> rx.Component:
     )
 
 
+def _home_option_row(h) -> rx.Component:
+    return section_card(
+        rx.hstack(
+            rx.vstack(
+                rx.text(h.label, size="2", weight="medium"),
+                rx.cond(h.is_current, rx.text("Текущий дом", size="1", color="var(--gray-9)")),
+                spacing="0",
+                align="start",
+            ),
+            rx.spacer(),
+            rx.cond(
+                h.is_current,
+                rx.icon("check", size=16, color=BRAND_PURPLE),
+                rx.icon("chevron-right", size=16, color="var(--gray-8)"),
+            ),
+            width="100%",
+            align="center",
+        ),
+        cursor=rx.cond(h.is_current, "default", "pointer"),
+        on_click=rx.cond(h.is_current, rx.noop(), AuthState.switch_to_home(h.resident_id)),
+    )
+
+
+def _profile_switch_home() -> rx.Component:
+    """P04 — список домов, к которым присоединено это устройство (по
+    max_device_id): выбор переключает текущую сессию на другую запись
+    Resident, без выхода из аккаунта."""
+    return rx.vstack(
+        rx.hstack(
+            rx.icon(
+                "chevron-left",
+                size=20,
+                color="var(--gray-11)",
+                cursor="pointer",
+                on_click=AuthState.set_profile_view("menu"),
+            ),
+            rx.heading("Переключить дом", size="5", weight="bold"),
+            spacing="2",
+            align="center",
+            margin_bottom="0.75rem",
+        ),
+        rx.foreach(AuthState.switch_home_options, _home_option_row),
+        rx.text(
+            "Чтобы добавить ещё один дом, откройте его код приглашения или "
+            "ссылку — это устройство присоединится, не теряя доступ к текущему.",
+            size="2",
+            color="var(--gray-9)",
+            margin_top="0.5rem",
+        ),
+        width="100%",
+        align="start",
+    )
+
+
 def _profile_menu() -> rx.Component:
     """P01 — «Ваш дом и профиль», открывается тапом на карточку личности."""
     return rx.vstack(
@@ -2980,7 +3034,12 @@ def _profile_menu() -> rx.Component:
             on_click=[AuthState.close_profile_sheet, ProposalsState.open_my_proposals],
         ),
         _settings_menu_item("file-text", "Черновики", "Скоро"),
-        _settings_menu_item("repeat", "Переключить дом", "Скоро"),
+        _settings_menu_item(
+            "repeat",
+            "Переключить дом",
+            "Если вы состоите в нескольких домах",
+            on_click=AuthState.open_switch_home,
+        ),
         _settings_menu_item("shield", "Приватность", "Скоро"),
         _settings_menu_item(
             "log-out",
@@ -3003,6 +3062,7 @@ def _profile_sheet() -> rx.Component:
                     AuthState.profile_view,
                     ("edit_name", _profile_edit_name()),
                     ("change_apartment", _profile_change_apartment()),
+                    ("switch_home", _profile_switch_home()),
                     _profile_menu(),
                 ),
                 max_width=MAX_WIDTH,
@@ -3054,7 +3114,7 @@ def home_tab() -> rx.Component:
         rx.cond(AuthState.is_resident, _create_flow_dialog()),
         rx.cond(AuthState.is_resident, _my_proposals_dialog()),
         rx.cond(AuthState.is_resident, _profile_sheet()),
-        rx.cond(AuthState.is_uk, _reject_reason_dialog()),
+        rx.cond(AuthState.has_admin_access, _reject_reason_dialog()),
         _identity_card(),
         _home_header(),
         rx.cond(
@@ -4418,8 +4478,7 @@ def _residents_list() -> rx.Component:
 
 def _resident_detail() -> rx.Component:
     """R07 — карточка жильца. «Написать» из макета не делаем — в приложении
-    нет внутреннего мессенджера. Права администратора (R08/R09) — отдельная
-    partия работы, требует решения по архитектуре ролей."""
+    нет внутреннего мессенджера. R08/R09/R12 — права соадминистратора."""
     r = UKAdminState.selected_resident
     return rx.cond(
         r,
@@ -4441,9 +4500,38 @@ def _resident_detail() -> rx.Component:
             ),
             rx.center(rx.heading(r.full_name, size="5", weight="bold"), width="100%"),
             rx.center(
-                rx.text("Квартира " + r.apartment, size="2", color="var(--gray-9)"),
+                rx.hstack(
+                    rx.text("Квартира " + r.apartment, size="2", color="var(--gray-9)"),
+                    rx.cond(r.is_admin, rx.badge("Соадминистратор", color_scheme="iris")),
+                    spacing="2",
+                    align="center",
+                ),
                 width="100%",
                 margin_bottom="1.5rem",
+            ),
+            rx.cond(
+                AuthState.is_uk,
+                rx.cond(
+                    r.is_admin,
+                    rx.button(
+                        "Убрать права администратора",
+                        width="100%",
+                        size="3",
+                        radius="full",
+                        variant="soft",
+                        margin_bottom="0.75rem",
+                        on_click=UKAdminState.revoke_admin_rights(r.id),
+                    ),
+                    rx.button(
+                        "Сделать администратором",
+                        width="100%",
+                        size="3",
+                        radius="full",
+                        style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+                        margin_bottom="0.75rem",
+                        on_click=UKAdminState.grant_admin_rights(r.id),
+                    ),
+                ),
             ),
             rx.cond(
                 r.pending_apartment != "",
@@ -4748,7 +4836,7 @@ def _announcements_hub() -> rx.Component:
 
 def management_tab() -> rx.Component:
     return rx.fragment(
-        rx.cond(AuthState.is_uk, _reject_reason_dialog()),
+        rx.cond(AuthState.has_admin_access, _reject_reason_dialog()),
         rx.match(
             AuthState.management_view,
             ("proposals", _proposals_screen()),
