@@ -52,6 +52,7 @@ app.add_page(
     title="Домовод",
     on_load=[
         AuthState.require_resident,
+        AuthState.refresh_resident_session,
         NewsState.load_news,
         NewsState.start_live,
         FinanceState.load_resident_finance,

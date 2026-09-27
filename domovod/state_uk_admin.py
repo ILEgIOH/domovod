@@ -69,6 +69,7 @@ class ResidentItem(BaseModel):
     entrance_number: int
     building_address: str
     submitted_fmt: str = ""
+    pending_apartment: str = ""
 
 
 class UKAdminState(AuthState):
@@ -220,6 +221,7 @@ class UKAdminState(AuthState):
                     entrance_number=ent.number if ent else 0,
                     building_address=building_map.get(ent.building_id, "?") if ent else "?",
                     submitted_fmt=_fmt_submitted(r.created_at),
+                    pending_apartment=r.pending_apartment,
                 )
                 if r.status == "pending":
                     pending_items.append(item)
@@ -528,6 +530,33 @@ class UKAdminState(AuthState):
             r = session.get(Resident, resident_id)
             if r and r.tenant_id == int(self.tenant_id) and r.status == "pending":
                 session.delete(r)
+                session.commit()
+        return UKAdminState.load_admin_data
+
+    # ---------------- P03: смена квартиры — на проверку администратору ----
+
+    @rx.var
+    def apartment_change_count(self) -> int:
+        return len([r for r in self.residents if r.pending_apartment])
+
+    @rx.event
+    def approve_apartment_change(self, resident_id: int):
+        with get_session() as session:
+            r = session.get(Resident, resident_id)
+            if r and r.tenant_id == int(self.tenant_id) and r.pending_apartment:
+                r.apartment = r.pending_apartment
+                r.pending_apartment = ""
+                session.add(r)
+                session.commit()
+        return UKAdminState.load_admin_data
+
+    @rx.event
+    def reject_apartment_change(self, resident_id: int):
+        with get_session() as session:
+            r = session.get(Resident, resident_id)
+            if r and r.tenant_id == int(self.tenant_id):
+                r.pending_apartment = ""
+                session.add(r)
                 session.commit()
         return UKAdminState.load_admin_data
 

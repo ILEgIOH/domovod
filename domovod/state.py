@@ -40,6 +40,9 @@ class AuthState(rx.State):
     building_id: int = rx.SessionStorage(0)
     display_name: str = rx.SessionStorage("")
     apartment: str = rx.SessionStorage("")
+    # P03: новая квартира, отправленная на проверку администратору —
+    # непусто, пока заявка не рассмотрена (см. Resident.pending_apartment).
+    pending_apartment: str = rx.SessionStorage("")
 
     # Подъезд, для которого сейчас показывается общий экран «Дом»
     # (объявления/сборы/инициативы/опросы). У жителя всегда свой — не
@@ -86,9 +89,11 @@ class AuthState(rx.State):
     # --- P01/P02: «Ваш дом и профиль» (только у жителя) — меню профиля,
     # открывается по тапу на карточку личности вместо мгновенного выхода.
     show_profile_sheet: bool = False
-    profile_view: str = "menu"  # "menu" | "edit_name"
+    profile_view: str = "menu"  # "menu" | "edit_name" | "change_apartment"
     edit_name_input: str = ""
     profile_error: str = ""
+    apartment_change_input: str = ""
+    leave_home_confirm: bool = False
 
     # --- мастер предложения (F01–F13): резидент предлагает сбор/
     # инициативу/опрос на модерацию УК. Шаг живёт тут, сами поля формы —
@@ -178,6 +183,66 @@ class AuthState(rx.State):
         self.display_name = name
         self.profile_view = "menu"
 
+    # ---------------- P03: смена квартиры (на проверку администратору) ----
+
+    @rx.event
+    def open_change_apartment(self):
+        self.apartment_change_input = ""
+        self.profile_error = ""
+        self.profile_view = "change_apartment"
+
+    @rx.event
+    def set_apartment_change_input(self, value: str):
+        self.apartment_change_input = "".join(ch for ch in value if ch.isdigit())
+
+    @rx.event
+    def apartment_change_key_down(self, key: str, info: KeyInputInfo):
+        if len(key) == 1 and not key.isdigit():
+            return rx.prevent_default
+
+    @rx.event
+    def submit_apartment_change(self):
+        new_apartment = self.apartment_change_input.strip()
+        if not new_apartment:
+            self.profile_error = "Укажите новую квартиру"
+            return
+        if new_apartment == self.apartment:
+            self.profile_error = "Это ваша текущая квартира"
+            return
+        with get_session() as session:
+            resident = session.get(Resident, int(self.user_id))
+            if resident:
+                resident.pending_apartment = new_apartment
+                session.add(resident)
+                session.commit()
+        self.pending_apartment = new_apartment
+        self.profile_view = "menu"
+
+    # ---------------- P06: выйти из дома (отсоединить это устройство) -----
+
+    @rx.event
+    def ask_leave_home(self):
+        self.leave_home_confirm = True
+
+    @rx.event
+    def cancel_leave_home(self):
+        self.leave_home_confirm = False
+
+    @rx.event
+    def confirm_leave_home(self):
+        """Житель отсоединяется от дома сам — это удаляет его запись
+        жителя целиком (как и «Удалить из дома» у админа, R11), а не
+        просто выходит из текущей сессии."""
+        with get_session() as session:
+            resident = session.get(Resident, int(self.user_id))
+            if resident:
+                session.delete(resident)
+                session.commit()
+        self.leave_home_confirm = False
+        self.show_profile_sheet = False
+        self._reset_session()
+        return rx.redirect("/")
+
     @rx.event
     def open_management_proposals(self):
         self.proposal_filter = "all"
@@ -216,6 +281,7 @@ class AuthState(rx.State):
         self.building_id = 0
         self.display_name = ""
         self.apartment = ""
+        self.pending_apartment = ""
         self.viewing_entrance_id = 0
         self.home_label = ""
 
@@ -245,6 +311,22 @@ class AuthState(rx.State):
     def require_resident(self):
         if self.is_hydrated and not self.is_resident:
             return rx.redirect("/")
+
+    @rx.event
+    def refresh_resident_session(self):
+        """При каждом открытии «Дома» подтягивает из БД то, что мог
+        поменять администратор в другой вкладке/сессии — имя (если его
+        сменил сам житель раньше это уже отражено, но квартиру меняет
+        решение УК по P03) — иначе одобренная смена квартиры не появится
+        в шапке, пока житель не выйдет и не зайдёт заново."""
+        if not self.is_resident:
+            return
+        with get_session() as session:
+            resident = session.get(Resident, int(self.user_id))
+            if resident:
+                self.display_name = resident.full_name
+                self.apartment = resident.apartment
+                self.pending_apartment = resident.pending_apartment
 
     # ---------------- Житель: экран «Присоединиться» (ввод кода) ----------------
 
@@ -311,6 +393,7 @@ class AuthState(rx.State):
         self.building_id = entrance.building_id
         self.display_name = resident.full_name
         self.apartment = resident.apartment
+        self.pending_apartment = resident.pending_apartment
         self.viewing_entrance_id = resident.entrance_id
         with get_session() as session:
             building = session.get(Building, entrance.building_id)

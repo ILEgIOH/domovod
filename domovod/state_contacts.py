@@ -3,14 +3,14 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 import reflex as rx
 from pydantic import BaseModel
 from sqlmodel import select
 
 from .db import get_session
-from .models import PersonalContact, UsefulAddress
+from .models import PersonalContact, Resident, Tenant, UsefulAddress
 from .setters import make_setter
 from .state import AuthState
 
@@ -29,9 +29,43 @@ class AddressItem(BaseModel):
     phone: str
 
 
+class NeighborItem(BaseModel):
+    id: int  # -1 — запись администратора, иначе id жителя
+    kind: str  # "admin" | "resident"
+    name: str
+    subtitle: str
+
+
 class ContactsState(AuthState):
     personal_contacts: List[ContactItem] = []
     useful_addresses: List[AddressItem] = []
+
+    # ---------------- K01–K08: поиск жильцов у самого жителя (у УК свой,
+    # более полный раздел уже есть в «Управление» → «Жильцы и контакты») ----
+    neighbors: List[NeighborItem] = []
+    neighbor_search: str = ""
+    selected_neighbor_id: int = 0
+
+    set_neighbor_search = make_setter("neighbor_search")
+
+    @rx.var
+    def filtered_neighbors(self) -> List[NeighborItem]:
+        q = self.neighbor_search.strip().lower()
+        if not q:
+            return self.neighbors
+        return [n for n in self.neighbors if q in n.name.lower() or q in n.subtitle.lower()]
+
+    @rx.var
+    def selected_neighbor(self) -> Optional[NeighborItem]:
+        return next((n for n in self.neighbors if n.id == self.selected_neighbor_id), None)
+
+    @rx.event
+    def open_neighbor(self, neighbor_id: int):
+        self.selected_neighbor_id = neighbor_id
+
+    @rx.event
+    def close_neighbor(self):
+        self.selected_neighbor_id = 0
 
     new_contact_name: str = ""
     new_contact_phone: str = ""
@@ -88,8 +122,25 @@ class ContactsState(AuthState):
                     AddressItem(id=a.id, category=a.category, title=a.title, value=a.value, phone=a.phone)
                     for a in addr_rows
                 ]
+
+                resident_rows = session.exec(
+                    select(Resident).where(
+                        Resident.entrance_id == self.viewing_entrance_id,
+                        Resident.status == "active",
+                    )
+                ).all()
+                tenant = session.get(Tenant, int(self.tenant_id)) if self.tenant_id else None
+                neighbors = []
+                if tenant:
+                    neighbors.append(NeighborItem(id=-1, kind="admin", name=tenant.name, subtitle="Администратор"))
+                neighbors += [
+                    NeighborItem(id=r.id, kind="resident", name=r.full_name, subtitle="Квартира " + r.apartment)
+                    for r in resident_rows
+                ]
+                self.neighbors = neighbors
             else:
                 self.useful_addresses = []
+                self.neighbors = []
 
     @rx.event
     def add_contact(self):

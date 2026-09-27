@@ -74,6 +74,10 @@ class Resident(SQLModel, table=True):
     # подтверждения администратора вместо мгновенного входа. "active" —
     # обычный житель, "pending" — заявка на рассмотрении.
     status: str = "active"
+    # P03: новая квартира, ждущая подтверждения администратора. "" — нет
+    # активной заявки на смену; сам resident.apartment не меняется, пока
+    # УК не одобрит (см. UKAdminState.approve_apartment_change).
+    pending_apartment: str = ""
     created_at: datetime = Field(default_factory=now_utc)
 
 

@@ -2866,6 +2866,86 @@ def _profile_edit_name() -> rx.Component:
     )
 
 
+def _profile_change_apartment() -> rx.Component:
+    """P03 — смена квартиры: заявка уходит на проверку администратору,
+    до одобрения в шапке остаётся прежняя квартира (как и в макете)."""
+    return rx.vstack(
+        rx.hstack(
+            rx.icon(
+                "chevron-left",
+                size=20,
+                color="var(--gray-11)",
+                cursor="pointer",
+                on_click=AuthState.set_profile_view("menu"),
+            ),
+            rx.heading("Изменить квартиру", size="5", weight="bold"),
+            spacing="2",
+            align="center",
+            margin_bottom="0.25rem",
+        ),
+        rx.text(AuthState.home_label, size="2", color="var(--gray-9)", margin_bottom="0.75rem"),
+        error_text(AuthState.profile_error),
+        field_label("Новая квартира"),
+        rx.input(
+            value=AuthState.apartment_change_input,
+            on_change=AuthState.set_apartment_change_input,
+            on_key_down=AuthState.apartment_change_key_down,
+            placeholder="48",
+            width="100%",
+            margin_bottom="0.6rem",
+            auto_focus=True,
+        ),
+        rx.text(
+            "Изменение квартиры отправится администратору на проверку. "
+            f"До подтверждения остаётся квартира {AuthState.apartment}.",
+            size="2",
+            color="var(--gray-9)",
+            margin_bottom="1rem",
+        ),
+        rx.button(
+            "Отправить на проверку",
+            width="100%",
+            size="3",
+            radius="full",
+            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+            on_click=AuthState.submit_apartment_change,
+        ),
+        width="100%",
+        align="start",
+    )
+
+
+def _confirm_leave_home_dialog() -> rx.Component:
+    """P06 — подтверждение выхода из дома (устройство отсоединяется от
+    подъезда целиком, как и R11 у администратора, только по инициативе
+    самого жителя)."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Выйти из дома?"),
+            rx.text(
+                "Вы потеряете доступ к этому дому. Чтобы вернуться, нужно будет "
+                "заново присоединиться по коду или ссылке.",
+                size="2",
+                color="var(--gray-10)",
+                margin_bottom="1rem",
+            ),
+            rx.hstack(
+                rx.button("Отмена", variant="soft", flex="1", on_click=AuthState.cancel_leave_home),
+                rx.button(
+                    "Выйти из дома",
+                    color_scheme="red",
+                    flex="1",
+                    on_click=AuthState.confirm_leave_home,
+                ),
+                width="100%",
+            ),
+            max_width="360px",
+        ),
+        open=AuthState.leave_home_confirm,
+        on_open_change=AuthState.cancel_leave_home,
+    )
+
+
 def _profile_menu() -> rx.Component:
     """P01 — «Ваш дом и профиль», открывается тапом на карточку личности."""
     return rx.vstack(
@@ -2884,6 +2964,16 @@ def _profile_menu() -> rx.Component:
             on_click=AuthState.open_edit_name,
         ),
         _settings_menu_item(
+            "home",
+            "Изменить квартиру",
+            rx.cond(
+                AuthState.pending_apartment != "",
+                "Заявка на квартиру " + AuthState.pending_apartment + " на проверке",
+                "Квартира " + AuthState.apartment,
+            ),
+            on_click=AuthState.open_change_apartment,
+        ),
+        _settings_menu_item(
             "clipboard-list",
             "Мои предложения",
             "Статус ваших заявок",
@@ -2892,25 +2982,34 @@ def _profile_menu() -> rx.Component:
         _settings_menu_item("file-text", "Черновики", "Скоро"),
         _settings_menu_item("repeat", "Переключить дом", "Скоро"),
         _settings_menu_item("shield", "Приватность", "Скоро"),
-        _settings_menu_item("log-out", "Выйти из дома", "Скоро"),
+        _settings_menu_item(
+            "log-out",
+            "Выйти из дома",
+            "Отсоединить это устройство",
+            on_click=AuthState.ask_leave_home,
+        ),
         width="100%",
         align="start",
     )
 
 
 def _profile_sheet() -> rx.Component:
-    return rx.dialog.root(
-        rx.dialog.content(
-            rx.dialog.title("Ваш дом и профиль", style={"display": "none"}),
-            rx.match(
-                AuthState.profile_view,
-                ("edit_name", _profile_edit_name()),
-                _profile_menu(),
+    return rx.fragment(
+        _confirm_leave_home_dialog(),
+        rx.dialog.root(
+            rx.dialog.content(
+                rx.dialog.title("Ваш дом и профиль", style={"display": "none"}),
+                rx.match(
+                    AuthState.profile_view,
+                    ("edit_name", _profile_edit_name()),
+                    ("change_apartment", _profile_change_apartment()),
+                    _profile_menu(),
+                ),
+                max_width=MAX_WIDTH,
             ),
-            max_width=MAX_WIDTH,
+            open=AuthState.show_profile_sheet,
+            on_open_change=AuthState.set_profile_sheet_open,
         ),
-        open=AuthState.show_profile_sheet,
-        on_open_change=AuthState.set_profile_sheet_open,
     )
 
 
@@ -3087,6 +3186,84 @@ def _useful_addresses_block() -> rx.Component:
     )
 
 
+def _neighbor_row(n) -> rx.Component:
+    return rx.hstack(
+        rx.vstack(
+            rx.text(n.name, size="2", weight="medium"),
+            rx.text(n.subtitle, size="1", color="var(--gray-9)"),
+            spacing="0",
+            align="start",
+        ),
+        rx.spacer(),
+        rx.icon("chevron-right", size=14, color="var(--gray-8)"),
+        width="100%",
+        align="center",
+        padding_y="0.4rem",
+        cursor="pointer",
+        on_click=ContactsState.open_neighbor(n.id),
+    )
+
+
+def _neighbors_block() -> rx.Component:
+    """K01–K08 — поиск жильцов у самого жителя (у УК свой, более полный
+    раздел «Жильцы и контакты» уже есть в «Управление»)."""
+    return section_card(
+        rx.heading("Жильцы", size="4", margin_bottom="0.4rem"),
+        rx.input(
+            placeholder="Имя или квартира",
+            value=ContactsState.neighbor_search,
+            on_change=ContactsState.set_neighbor_search,
+            width="100%",
+            size="2",
+            margin_bottom="0.5rem",
+        ),
+        rx.cond(
+            ContactsState.filtered_neighbors.length() == 0,
+            rx.text("Никого не нашли", size="2", color="var(--gray-9)"),
+            rx.foreach(ContactsState.filtered_neighbors, _neighbor_row),
+        ),
+    )
+
+
+def _neighbor_detail_dialog() -> rx.Component:
+    """K05/K06 — карточка жителя или администратора из поиска в «Контактах»."""
+    n = ContactsState.selected_neighbor
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.cond(
+                n,
+                rx.vstack(
+                    rx.center(
+                        rx.box(
+                            rx.icon(
+                                rx.cond(n.kind == "admin", "shield", "user"),
+                                size=28,
+                                color=BRAND_PURPLE,
+                            ),
+                            width="64px",
+                            height="64px",
+                            border_radius="999px",
+                            background=BRAND_PURPLE_TINT,
+                            display="flex",
+                            align_items="center",
+                            justify_content="center",
+                        ),
+                        width="100%",
+                        margin_bottom="0.75rem",
+                    ),
+                    rx.center(rx.heading(n.name, size="5", weight="bold"), width="100%"),
+                    rx.center(rx.text(n.subtitle, size="2", color="var(--gray-9)"), width="100%"),
+                    width="100%",
+                    align="center",
+                ),
+            ),
+            max_width="320px",
+        ),
+        open=ContactsState.selected_neighbor_id != 0,
+        on_open_change=ContactsState.close_neighbor,
+    )
+
+
 def _buildings_block() -> rx.Component:
     return rx.vstack(
         section_card(
@@ -3242,12 +3419,14 @@ def _residents_block() -> rx.Component:
 
 def contacts_tab() -> rx.Component:
     return rx.vstack(
+        rx.cond(AuthState.is_resident, _neighbor_detail_dialog()),
         rx.cond(
             AuthState.is_uk,
             rx.fragment(_buildings_block(), _invite_block(), _residents_block()),
         ),
         _personal_contacts_block(),
         _useful_addresses_block(),
+        rx.cond(AuthState.is_resident, _neighbors_block()),
         width="100%",
         spacing="3",
     )
@@ -3354,11 +3533,16 @@ def _management_menu() -> rx.Component:
         _management_menu_item(
             "users",
             "Жильцы и контакты",
-            "Список жильцов и администраторов",
+            rx.cond(
+                UKAdminState.apartment_change_count > 0,
+                UKAdminState.apartment_change_count.to_string() + " просит сменить квартиру",
+                "Список жильцов и администраторов",
+            ),
             on_click=[
                 UKAdminState.set_residents_view("menu"),
                 AuthState.set_management_view("residents"),
             ],
+            badge=rx.cond(UKAdminState.apartment_change_count > 0, UKAdminState.apartment_change_count, None),
         ),
         _management_menu_item(
             "link",
@@ -4201,6 +4385,7 @@ def _resident_row(r) -> rx.Component:
                 align="start",
             ),
             rx.spacer(),
+            rx.cond(r.pending_apartment != "", rx.badge("Смена квартиры", color_scheme="amber")),
             rx.icon("chevron-right", size=16, color="var(--gray-8)"),
             width="100%",
             align="center",
@@ -4259,6 +4444,32 @@ def _resident_detail() -> rx.Component:
                 rx.text("Квартира " + r.apartment, size="2", color="var(--gray-9)"),
                 width="100%",
                 margin_bottom="1.5rem",
+            ),
+            rx.cond(
+                r.pending_apartment != "",
+                section_card(
+                    rx.text(
+                        "Просит сменить квартиру на " + r.pending_apartment,
+                        size="2",
+                        weight="medium",
+                        margin_bottom="0.6rem",
+                    ),
+                    rx.hstack(
+                        rx.button(
+                            "Отклонить",
+                            variant="soft",
+                            flex="1",
+                            on_click=UKAdminState.reject_apartment_change(r.id),
+                        ),
+                        rx.button(
+                            "Подтвердить",
+                            flex="1",
+                            style={"background": BRAND_PURPLE, "color": BRAND_ACTION_TEXT},
+                            on_click=UKAdminState.approve_apartment_change(r.id),
+                        ),
+                        width="100%",
+                    ),
+                ),
             ),
             rx.button(
                 "Удалить из дома",
