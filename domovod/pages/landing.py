@@ -269,9 +269,21 @@ def _join_code_view() -> rx.Component:
             style={
                 "fontSize": "1.1rem",
                 "border": rx.cond(AuthState.join_code_error, "1.5px solid var(--red-9)", "none"),
+                # Инстант-капс на уровне CSS — сама буква приходит заглавной
+                # с той же доли секунды, без ожидания round-trip до сервера
+                # и обратно (иначе видно мигание: сначала строчная, потом
+                # подменяется на заглавную). Плейсхолдер из-под этого
+                # правила выводим через ::placeholder ниже (вложенный ключ
+                # в style до него не достаёт).
+                "textTransform": "uppercase",
             },
             width="100%",
             height="3.25rem",
+        ),
+        # ::placeholder — не поле style компонента, а отдельное CSS-правило;
+        # без него плейсхолдер тоже уезжает в капс вместе со введённым текстом.
+        rx.html(
+            "<style>#join_code_input_field::placeholder{text-transform:none}</style>"
         ),
         rx.cond(
             AuthState.join_code_error,
