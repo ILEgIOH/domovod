@@ -5,23 +5,25 @@ from __future__ import annotations
 import reflex as rx
 
 MAX_WIDTH = "460px"
-BG = "var(--gray-2)"
-CARD_BG = "var(--gray-1)"
+BG = "#F8F8F8"
+CARD_BG = "#FFFFFF"
 BORDER = "1px solid var(--gray-4)"
 
-# Фирменные цвета проекта — точные значения из дизайн-системы спеки
-# (страница D03 «Палитра»), используем напрямую, а не приближённые
-# оттенки из палитры Radix.
-BRAND_PURPLE = "#7885FF"
-BRAND_NEON = "#E7F53C"
-# Текст на Purple-поверхностях — всегда тёмный (не белый) для читаемости,
-# это отдельный фирменный цвет, а не просто "black".
+# Фирменные цвета проекта — редакция 03 спеки (страница D03 «Палитра»,
+# «Спокойнее, теплее»), используем напрямую, а не приближённые оттенки
+# из палитры Radix.
+BRAND_PURPLE = "#8290FD"
+# Тёплый жёлтый вместо кислотного неона — акцент для действий участия
+# («Я за!» и т.п.), см. D03.
+BRAND_NEON = "#F2E39B"
+# Текст на Purple/жёлтых поверхностях — всегда тёмный (не белый) для
+# читаемости, это отдельный фирменный цвет, а не просто "black".
 BRAND_ACTION_TEXT = "#343C80"
 # Светлый оттенок Purple — фон карточки кода приглашения и кнопки
 # «Скопировать код» (A03), сам Purple там был бы слишком ярким.
-BRAND_PURPLE_TINT = "#E7E9FE"
-TEXT_PRIMARY = "#202126"
-TEXT_SECONDARY = "#62656F"
+BRAND_PURPLE_TINT = "#E7EAFE"
+TEXT_PRIMARY = "#1D1D1F"
+TEXT_SECONDARY = "#707074"
 
 
 def phone_shell(*children, header: rx.Component | None = None) -> rx.Component:
