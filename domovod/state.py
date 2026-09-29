@@ -609,7 +609,12 @@ class AuthState(rx.State):
         self.role = "uk"
         self.user_id = tenant_id
         self.tenant_id = tenant_id
-        self.display_name = tenant_name
+        # Имя из формы (необязательное) показываем в шапке, если указали —
+        # иначе, как и раньше, показываем адрес дома. Без этого введённое
+        # имя молча терялось, если человек не указал заодно и квартиру
+        # (та привязка нужна только для создания записи жителя, к самому
+        # отображаемому имени она не имеет отношения).
+        self.display_name = full_name or tenant_name
         self.show_invite_after_create = True
         return rx.redirect("/uk")
 
