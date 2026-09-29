@@ -7,19 +7,6 @@ This project uses the **Reflex agent skills** — up-to-date knowledge for build
 
 Before working on this project, make sure the Reflex skills are available to you.
 
-### Claude Code
-
-If the skills are not already available, install them yourself by running these shell commands:
-
-```bash
-claude plugin marketplace add reflex-dev/agent-skills
-claude plugin install reflex@reflex-agent-skills
-```
-
-Newly installed plugins load on the next session. After installing, tell the user to restart the session so the skills auto-load; until then, read the skill files directly from `~/.claude/plugins/` when you need them.
-
-### Other agents (Cursor, OpenCode, Codex, Pi)
-
 ```
 npx skills add reflex-dev/agent-skills
 ```
