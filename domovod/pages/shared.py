@@ -3033,14 +3033,12 @@ def _profile_menu() -> rx.Component:
             "Статус ваших заявок",
             on_click=[AuthState.close_profile_sheet, ProposalsState.open_my_proposals],
         ),
-        _settings_menu_item("file-text", "Черновики", "Скоро"),
         _settings_menu_item(
             "repeat",
             "Переключить дом",
             "Если вы состоите в нескольких домах",
             on_click=AuthState.open_switch_home,
         ),
-        _settings_menu_item("shield", "Приватность", "Скоро"),
         _settings_menu_item(
             "log-out",
             "Выйти из дома",
@@ -4085,14 +4083,11 @@ def _settings_menu() -> rx.Component:
         rx.text("Доступно администраторам", size="2", color="var(--gray-9)", margin_bottom="0.75rem"),
         rx.cond(
             entrance,
-            rx.fragment(
-                _settings_menu_item(
-                    "map-pin",
-                    "Адрес и название",
-                    entrance.building_address,
-                    on_click=UKAdminState.open_edit_address,
-                ),
-                _settings_menu_item("building-2", "Подъезд и корпус", "Подъезд " + entrance.number.to_string()),
+            _settings_menu_item(
+                "map-pin",
+                "Адрес и название",
+                entrance.building_address,
+                on_click=UKAdminState.open_edit_address,
             ),
         ),
         _settings_menu_item(
