@@ -326,8 +326,17 @@ class AuthState(rx.State):
         """R08/R09/R12: УК всегда, житель — только если ему назначили
         права соадминистратора. Гейтит вкладку «Управление» и загрузку
         админских данных — используется вместо is_uk везде, где решение
-        должно учитывать и соадминов."""
-        return self.is_uk or (self.is_resident and self.resident_is_admin)
+        должно учитывать и соадминов.
+
+        До гидратации браузера SessionStorage-поле resident_is_admin
+        может на мгновение прийти строкой "false" вместо bool False —
+        строка "false" в Python truthy, поэтому сравниваем явно, а не
+        полагаемся на приведение типа."""
+        if self.is_uk:
+            return True
+        if not self.is_resident:
+            return False
+        return str(self.resident_is_admin).strip().lower() == "true"
 
     @rx.var
     def join_code_ready(self) -> bool:

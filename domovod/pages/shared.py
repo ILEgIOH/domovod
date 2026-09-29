@@ -4095,7 +4095,15 @@ def _settings_menu() -> rx.Component:
                 _settings_menu_item("building-2", "Подъезд и корпус", "Подъезд " + entrance.number.to_string()),
             ),
         ),
-        _settings_menu_item("users", "Администраторы", "Скоро"),
+        _settings_menu_item(
+            "users",
+            "Администраторы",
+            "Назначить или снять — в разделе «Жильцы»",
+            on_click=[
+                UKAdminState.set_residents_view("residents"),
+                AuthState.set_management_view("residents"),
+            ],
+        ),
         rx.text("Опасная зона", size="2", weight="bold", color="var(--red-9)", margin_top="1rem", margin_bottom="0.4rem"),
         rx.box(
             rx.text("Удалить дом", weight="bold", color="var(--red-9)", text_align="center"),
